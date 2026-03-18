@@ -45,14 +45,12 @@ st.set_page_config(
 
 def _run_async(coro):
     """Executa coroutine em contexto síncrono (Streamlit não é async)."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            raise RuntimeError
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 def _confidence_label(item: dict) -> str:
@@ -79,6 +77,21 @@ def _init_classifications(results: list):
 
 def _classify(url: str, label: str):
     st.session_state.classifications[url] = label
+
+
+def _passes_filter(
+    item: dict,
+    filter_sources: list,
+    conf_min: float,
+    conf_max: float,
+    include_no_conf: bool,
+) -> bool:
+    if item.get("source") not in filter_sources:
+        return False
+    conf = item.get("confidence")
+    if conf is None:
+        return include_no_conf
+    return conf_min <= conf <= conf_max
 
 
 # ─── sidebar ──────────────────────────────────────────────────────────────────
@@ -121,12 +134,16 @@ if uploaded_file:
 
                 try:
                     result = _run_async(search_image(tmp_path))
+                except Exception as exc:
+                    st.error(f"Erro na busca de imagem: {exc}")
+                    result = None
                 finally:
                     os.unlink(tmp_path)
 
-            st.session_state.search_result = result
-            st.session_state.classifications = {}
-            st.rerun()
+            if result is not None:
+                st.session_state.search_result = result
+                st.session_state.classifications = {}
+                st.rerun()
 
 # ─── resultados ───────────────────────────────────────────────────────────────
 
@@ -168,15 +185,10 @@ if "search_result" in st.session_state:
     conf_min = conf_range[0] / 100
     conf_max = conf_range[1] / 100
 
-    def _passes_filter(item: dict) -> bool:
-        if item.get("source") not in filter_sources:
-            return False
-        conf = item.get("confidence")
-        if conf is None:
-            return include_no_conf
-        return conf_min <= conf <= conf_max
-
-    filtered_results = [r for r in results if _passes_filter(r)]
+    filtered_results = [
+        r for r in results
+        if _passes_filter(r, filter_sources, conf_min, conf_max, include_no_conf)
+    ]
 
     st.subheader(f"Resultados ({len(filtered_results)} exibidos de {len(results)})")
     st.caption(
@@ -226,7 +238,7 @@ if "search_result" in st.session_state:
                 with btn_cols[0]:
                     active = classification == "violacao"
                     if st.button(
-                        "✅ Violação" if not active else "✅ *Violação*",
+                        "✅ Violação",
                         key=f"v_{url}",
                         type="primary" if active else "secondary",
                         use_container_width=True,
@@ -283,11 +295,11 @@ if "search_result" in st.session_state:
 
                     lookup_results = _run_async(_lookup_all())
                     domain_lookup = {}
-                    for domain, lr in zip(unique_domains, lookup_results):
+                    for d, lr in zip(unique_domains, lookup_results):
                         if isinstance(lr, Exception):
-                            domain_lookup[domain] = {}
+                            domain_lookup[d] = {}
                         else:
-                            domain_lookup[domain] = lr
+                            domain_lookup[d] = lr
 
                 with st.spinner("Gerando dossiê..."):
                     violations_data = []
@@ -313,16 +325,21 @@ if "search_result" in st.session_state:
                         date=today,
                     )
 
-                    pdf_bytes = pdf_to_bytes(markdown_text)
+                    try:
+                        pdf_bytes = pdf_to_bytes(markdown_text)
+                    except RuntimeError as exc:
+                        st.error(str(exc))
+                        pdf_bytes = None
 
-                filename = f"dossie_{client_name.lower().replace(' ', '_')}_{today}.pdf"
-                st.download_button(
-                    label="Baixar Dossiê PDF",
-                    data=pdf_bytes,
-                    file_name=filename,
-                    mime="application/pdf",
-                    type="primary",
-                )
+                if pdf_bytes is not None:
+                    filename = f"dossie_{client_name.lower().replace(' ', '_')}_{today}.pdf"
+                    st.download_button(
+                        label="Baixar Dossiê PDF",
+                        data=pdf_bytes,
+                        file_name=filename,
+                        mime="application/pdf",
+                        type="primary",
+                    )
 
-                with st.expander("Pré-visualizar markdown do dossiê"):
-                    st.markdown(markdown_text)
+                    with st.expander("Pré-visualizar markdown do dossiê"):
+                        st.markdown(markdown_text)
