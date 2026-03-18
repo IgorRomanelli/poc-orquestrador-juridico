@@ -32,6 +32,19 @@ from src.export.pdf_exporter import to_bytes as pdf_to_bytes
 from src.lookup.orchestrator import lookup_domain
 from src.search.orchestrator import search_image
 
+_SOCIAL_DOMAINS = frozenset({
+    "instagram.com", "facebook.com", "twitter.com", "x.com",
+    "tiktok.com", "youtube.com", "pinterest.com", "linkedin.com",
+    "reddit.com", "snapchat.com", "tumblr.com", "flickr.com",
+    "threads.net", "vk.com", "t.me",
+})
+
+
+def _is_social(item: dict) -> bool:
+    """Retorna True se o domínio pertence a uma rede social conhecida."""
+    domain = item.get("domain", "").lower()
+    return any(social in domain for social in _SOCIAL_DOMAINS)
+
 
 # ─── configuração da página ────────────────────────────────────────────────────
 
@@ -109,8 +122,11 @@ def _passes_filter(
     conf_min: float,
     conf_max: float,
     include_no_conf: bool,
+    hide_social: bool = False,
 ) -> bool:
     if item.get("source") not in filter_sources:
+        return False
+    if hide_social and _is_social(item):
         return False
     conf = item.get("confidence")
     if conf is None:
@@ -192,7 +208,7 @@ if "search_result" in st.session_state:
 
     # ─── filtros ──────────────────────────────────────────────────────────────
     with st.expander("Filtros", expanded=False):
-        fcol1, fcol2, fcol3 = st.columns([2, 3, 1])
+        fcol1, fcol2, fcol3, fcol4 = st.columns([2, 3, 1, 1])
         with fcol1:
             filter_sources = st.multiselect(
                 "Fonte",
@@ -205,13 +221,19 @@ if "search_result" in st.session_state:
         with fcol3:
             include_no_conf = st.checkbox("Sem confiança", value=True,
                                           help="Incluir resultados sem valor de confiança (geralmente Google Vision)")
+        with fcol4:
+            hide_social = st.checkbox(
+                "Ocultar redes sociais",
+                value=True,
+                help="Remove Instagram, Facebook, TikTok etc. — foca em sites e Google Maps.",
+            )
 
     conf_min = conf_range[0] / 100
     conf_max = conf_range[1] / 100
 
     filtered_results = [
         r for r in results
-        if _passes_filter(r, filter_sources, conf_min, conf_max, include_no_conf)
+        if _passes_filter(r, filter_sources, conf_min, conf_max, include_no_conf, hide_social)
     ]
 
     st.subheader(f"Resultados ({len(filtered_results)} exibidos de {len(results)})")
