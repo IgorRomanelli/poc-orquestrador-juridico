@@ -1,0 +1,141 @@
+"""
+Orquestrador de lookup: coordena WHOIS, CNPJ e JUCESP para um domínio.
+
+Fluxo:
+    1. lookup_whois(domain)           → sequencial (CNPJ depende do registrant)
+    2. asyncio.gather(
+           lookup_cnpj(cnpj),         → paralelo
+           lookup_jucesp(name, cnpj)  → paralelo
+       )
+
+Status global: "found" | "partial" | "not_found" | "error"
+"""
+
+import asyncio
+
+from .cnpj_client import extract_cnpj_from_text, lookup_cnpj
+from .jucesp_client import lookup_jucesp
+from .whois_client import lookup_whois
+
+
+# ─── helpers privados ──────────────────────────────────────────────────────────
+
+def _compute_global_status(whois: dict, cnpj: dict) -> str:
+    whois_ok = whois.get("status") == "found"
+    cnpj_ok = cnpj.get("status") == "found"
+    has_error = whois.get("status") == "error" or cnpj.get("status") == "error"
+
+    if whois_ok and cnpj_ok:
+        return "found"
+    if has_error:
+        return "error"
+    if whois_ok or cnpj_ok:
+        return "partial"
+    return "not_found"
+
+
+def _collect_review_reasons(whois: dict, cnpj: dict, jucesp: dict) -> list[str]:
+    reasons = []
+    for result in (whois, cnpj, jucesp):
+        msg = result.get("message")
+        if result.get("requires_manual_review") and msg:
+            reasons.append(msg)
+    return reasons
+
+
+def _build_summary(whois: dict, cnpj: dict, jucesp: dict) -> dict:
+    razao_social = cnpj.get("razao_social") or whois.get("registrant")
+    return {
+        "razao_social": razao_social,
+        "cnpj": cnpj.get("cnpj"),
+        "registrant": whois.get("registrant"),
+        "address": cnpj.get("logradouro"),
+        "socios": cnpj.get("socios", []),
+        "jucesp_search_url": jucesp.get("jucesp_search_url"),
+        "manual_review_reasons": _collect_review_reasons(whois, cnpj, jucesp),
+    }
+
+
+def _exception_to_error(exc: Exception, label: str) -> dict:
+    return {
+        "status": "error",
+        "requires_manual_review": True,
+        "message": f"{label} falhou com erro inesperado: {exc} — validar manualmente",
+    }
+
+
+# ─── função pública ────────────────────────────────────────────────────────────
+
+async def lookup_domain(domain: str) -> dict:
+    """
+    Executa lookup completo de um domínio: WHOIS + CNPJ + JUCESP.
+
+    Args:
+        domain: domínio a consultar (ex: "exemplo.com.br").
+
+    Returns:
+        dict com status global, sub-resultados e summary consolidado.
+    """
+    # Passo 1: WHOIS (sequencial — resultado alimenta CNPJ)
+    whois_result = await lookup_whois(domain)
+
+    # Extrair CNPJ: prioriza campo owner-id do Registro.br, fallback para regex no texto
+    registrant = whois_result.get("registrant")
+    registrant_email = whois_result.get("registrant_email")
+    cnpj_candidate = whois_result.get("document")
+    if not cnpj_candidate:
+        search_text = " ".join(filter(None, [registrant, registrant_email]))
+        cnpj_candidate = await extract_cnpj_from_text(search_text)
+
+    # Passo 2: CNPJ + JUCESP em paralelo
+    cnpj_coro = lookup_cnpj(cnpj_candidate) if cnpj_candidate else _no_cnpj_result(domain)
+    jucesp_coro = lookup_jucesp(registrant, cnpj_candidate)
+
+    cnpj_result, jucesp_result = await asyncio.gather(
+        cnpj_coro,
+        jucesp_coro,
+        return_exceptions=True,
+    )
+
+    # Isolar exceções inesperadas sem matar o resultado inteiro
+    if isinstance(cnpj_result, Exception):
+        cnpj_result = _exception_to_error(cnpj_result, "CNPJ")
+    if isinstance(jucesp_result, Exception):
+        jucesp_result = _exception_to_error(jucesp_result, "JUCESP")
+
+    # Atualizar JUCESP com razão social do CNPJ se encontrado
+    if cnpj_result.get("razao_social") and jucesp_result.get("status") == "manual_required":
+        from .jucesp_client import lookup_jucesp as _jucesp
+        jucesp_result = await _jucesp(cnpj_result["razao_social"], cnpj_result.get("cnpj"))
+
+    global_status = _compute_global_status(whois_result, cnpj_result)
+    requires_manual = any(
+        r.get("requires_manual_review")
+        for r in (whois_result, cnpj_result, jucesp_result)
+    )
+
+    return {
+        "domain": domain,
+        "status": global_status,
+        "requires_manual_review": requires_manual,
+        "whois": whois_result,
+        "cnpj_data": cnpj_result,
+        "jucesp": jucesp_result,
+        "summary": _build_summary(whois_result, cnpj_result, jucesp_result),
+    }
+
+
+async def _no_cnpj_result(domain: str) -> dict:
+    """Resultado padrão quando nenhum CNPJ é extraído do WHOIS."""
+    return {
+        "cnpj": None,
+        "razao_social": None,
+        "nome_fantasia": None,
+        "situacao": None,
+        "atividade_principal": None,
+        "logradouro": None,
+        "socios": [],
+        "status": "not_found",
+        "requires_manual_review": True,
+        "message": "CNPJ não encontrado no WHOIS — validar manualmente",
+    }

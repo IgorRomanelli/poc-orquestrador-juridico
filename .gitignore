@@ -1,0 +1,11 @@
+.env
+*.pyc
+__pycache__/
+.DS_Store
+credentials.json
+*.key
+venv/
+.venv/
+.pytest_cache/
+tests/images/
+*.pdf

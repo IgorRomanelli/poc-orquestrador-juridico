@@ -1,0 +1,36 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.3, pytest-8.1.1, pluggy-1.6.0
+asyncio: mode=Mode.STRICT
+collected 1 item
+
+[INTEGRAÇÃO — imagem real]
+tests/test_search.py::test_real_image_search_h1_criterion
+
+============================================================
+IMAGEM: tests/images/xuxa.png  (foto pública — Xuxa, celebridade BR)
+STATUS: found | revisão manual: False
+Tempo:  6.98s
+Resultados: 140 (de 140 brutos, 0 duplicatas)
+Domínios: tiktok.com, twitter.com, instagram.com, facebook.com, fancentro.com,
+          onlyfans.com, youtube.com, nationalpublicdata.com, officialusa.com,
+          oglobo.globo.com
+
+Top 5 resultados (por confidence):
+  [facecheck] conf=0.70 → https://www.tiktok.com/@_nostalgiass
+  [facecheck] conf=0.51 → https://www.tiktok.com/@portaldafamaof/video/6868665113927339265
+  [facecheck] conf=0.49 → https://www.tiktok.com/@nostalgiaanosdecrianca
+  [facecheck] conf=0.48 → https://twitter.com/MYHornyHi
+  [facecheck] conf=0.48 → https://www.tiktok.com/@observei/video/6851579932074724613
+
+Taxa de sucesso H1: 100% (1/1)
+PASSED
+
+======================== 1 passed in 7.13s ==============================
+
+---
+Execução: 2026-03-18
+Imagem: foto pública de celebridade (teste técnico — não é caso do Ulysses)
+FaceCheck: DEMO=true (sem deduzir créditos) → 100 resultados
+Google Vision: ativo → 40 resultados adicionais
+Total agregado: 140 resultados únicos em 10 domínios
+Nota: Google Vision exigiu ativação do billing no projeto GCP correto (#236840459327)

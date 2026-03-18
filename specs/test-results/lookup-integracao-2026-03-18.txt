@@ -1,0 +1,92 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.3, pytest-8.1.1, pluggy-1.6.0 -- /Library/Frameworks/Python.framework/Versions/3.14/bin/python3
+cachedir: .pytest_cache
+rootdir: /Users/igorromanelli/Desktop/projetos/projeto-alpha/poc-orquestrador
+plugins: anyio-4.12.1, asyncio-0.23.6
+asyncio: mode=Mode.STRICT
+collecting ... collected 1 item
+tests/test_lookup.py::test_real_domain_lookup_h2_criterion 
+============================================================
+DOMÍNIO: magazineluiza.com.br
+STATUS GERAL: found | revisão manual: True
+── WHOIS (found)
+   Registrante:  MAGAZINE LUIZA S/A
+   Responsável:  Andre Fatala
+   Documento:    47.960.950/0001-21
+   Criado em:    1997-10-06
+   Expira em:    2030-10-06
+   Contato [ANFAT16]: Andre Fatala <infra@luizalabs.com>
+   Contato [REMAG87]: Registro Magazine <infra@luizalabs.com>
+   Registro.br:  https://registro.br/tecnologia/ferramentas/whois?search=magazineluiza.com.br
+── CNPJ (found)
+   CNPJ:         47.960.950/0001-21
+   Razão social: MAGAZINE LUIZA S/A
+   Fantasia:     MAGAZINE LUIZA
+   Situação:     ATIVA
+   Atividade:    Lojas de departamentos ou magazines, exceto lojas francas (Duty free)
+   Endereço:     R VOLUNTARIOS DA FRANCA, 1465, FRANCA, SP
+   Sócios:       ANDRE LUIZ DE SOUZA FATALA — 10-Diretor, FREDERICO TRAJANO INACIO RODRIGUES — 16-Presidente, ROBERTO BELLISSIMO RODRIGUES — 10-Diretor, FABRICIO BITTAR GARCIA — 10-Diretor, MARIA ISABEL BONFIM DE OLIVEIRA — 10-Diretor
+── JUCESP (manual_required)
+   JUCESP:       https://www.jucesponline.sp.gov.br
+   ⚠ Consulta JUCESP requer verificação manual — link direto gerado para agilizar
+============================================================
+DOMÍNIO: nubank.com.br
+STATUS GERAL: found | revisão manual: True
+── WHOIS (found)
+   Registrante:  NU PAGAMENTOS SA
+   Responsável:  Nubank Dom�nios
+   Documento:    18.236.120/0001-58
+   Criado em:    2013-11-20
+   Expira em:    2026-11-20
+   Contato [EOSPA3]: EOS Solucoes de Pagamento <dominios@nubank.com.br>
+   Registro.br:  https://registro.br/tecnologia/ferramentas/whois?search=nubank.com.br
+── CNPJ (found)
+   CNPJ:         18.236.120/0001-58
+   Razão social: NU PAGAMENTOS S.A. - INSTITUICAO DE PAGAMENTO
+   Fantasia:     None
+   Situação:     ATIVA
+   Atividade:    Outras atividades auxiliares dos serviços financeiros não especificadas anteriormente
+   Endereço:     R CAPOTE VALENTE, 120, ANDAR 01 AO 8 E 9 ANDAR CONJ 902 E 16 ANDAR, SAO PAULO, SP
+   Sócios:       CAIO CEZAR BANTI — 10-Diretor, MARISTELA OLIVEIRA CALAZANS DE SOUZA — 10-Diretor, VALESCA CIDRONIO GOMES — 10-Diretor, EDUARDO ALCEBIADES LOPES — 10-Diretor, GUILHERME MARQUES DO LAGO — 10-Diretor, TULIO MAIA GONZAGA DE OLIVEIRA — 10-Diretor, JEREMY TAYLOR SELESNER — 10-Diretor, GABRIELA TUBA — 10-Diretor, ARTHUR FERREIRA VALADAO — 10-Diretor, LIVIA MARTINES CHANES — 16-Presidente, FABRICIO SOUZA DE LIMA — 10-Diretor, HENRIQUE CAMOSSA SALDANHA FRAGELLI — 10-Diretor, JOAO RAFAEL MULLER BANZATO — 10-Diretor, JULIANA AUGUSTO APARECIDA ROSCHEL DA SILVA — 10-Diretor, RODRIGO SANTOS SILVA — 10-Diretor, BRUNO GUSMAO ROCHA — 10-Diretor
+── JUCESP (manual_required)
+   JUCESP:       https://www.jucesponline.sp.gov.br
+   ⚠ Consulta JUCESP requer verificação manual — link direto gerado para agilizar
+============================================================
+DOMÍNIO: natura.com.br
+STATUS GERAL: found | revisão manual: True
+── WHOIS (found)
+   Registrante:  NATURA COSMETICOS S/A
+   Responsável:  Natura Cosmeticos S/A
+   Documento:    71.673.990/0001-77
+   Criado em:    1996-02-08
+   Expira em:    2027-02-08
+   Contato [NACSA19]: Natura Cosmeticos S/A <dominiosnatura@natura.net>
+   Contato [NACSA38]: Natura Cosmeticos S/A <leonardolopes@natura.net>
+   Registro.br:  https://registro.br/tecnologia/ferramentas/whois?search=natura.com.br
+── CNPJ (found)
+   CNPJ:         71.673.990/0001-77
+   Razão social: NATURA COSMETICOS S/A
+   Fantasia:     NATURA
+   Situação:     ATIVA
+   Atividade:    Comércio atacadista de cosméticos e produtos de perfumaria
+   Endereço:     AV ALEXANDRE COLARES, 1188, SAO PAULO, SP
+   Sócios:       AGENOR LEAO DE ALMEIDA JUNIOR — 10-Diretor, SILVIA LOPES VILAS BOAS MAGALHAES — 10-Diretor, ANA BEATRIZ MACEDO DA COSTA — 10-Diretor, JOAO PAULO BROTTO GONCALVES FERREIRA — 10-Diretor
+── JUCESP (manual_required)
+   JUCESP:       https://www.jucesponline.sp.gov.br
+   ⚠ Consulta JUCESP requer verificação manual — link direto gerado para agilizar
+Taxa de sucesso H2: 100% (3/3)
+PASSED
+=============================== warnings summary ===============================
+tests/test_lookup.py:419
+  /Users/igorromanelli/Desktop/projetos/projeto-alpha/poc-orquestrador/tests/test_lookup.py:419: PytestUnknownMarkWarning: Unknown pytest.mark.integration - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.integration
+tests/test_lookup.py::test_real_domain_lookup_h2_criterion
+tests/test_lookup.py::test_real_domain_lookup_h2_criterion
+tests/test_lookup.py::test_real_domain_lookup_h2_criterion
+tests/test_lookup.py::test_real_domain_lookup_h2_criterion
+tests/test_lookup.py::test_real_domain_lookup_h2_criterion
+tests/test_lookup.py::test_real_domain_lookup_h2_criterion
+tests/test_lookup.py::test_real_domain_lookup_h2_criterion
+tests/test_lookup.py::test_real_domain_lookup_h2_criterion
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 1 passed, 42 warnings in 5.64s ========================

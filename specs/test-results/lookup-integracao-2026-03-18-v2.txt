@@ -1,0 +1,156 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.3, pytest-8.1.1, pluggy-1.6.0
+asyncio: mode=Mode.STRICT
+collected 23 items
+
+[UNITÁRIOS — 22/22 PASSED]
+TestWhoisClient::test_found_returns_required_keys             PASSED
+TestWhoisClient::test_empty_whois_returns_not_found           PASSED
+TestWhoisClient::test_none_response_returns_not_found         PASSED
+TestWhoisClient::test_timeout_returns_error                   PASSED
+TestWhoisClient::test_unexpected_exception_returns_error      PASSED
+TestCnpjClient::test_found_returns_required_keys              PASSED
+TestCnpjClient::test_invalid_cnpj_format_returns_error        PASSED
+TestCnpjClient::test_404_returns_not_found                    PASSED
+TestCnpjClient::test_429_returns_error_with_rate_limit_message PASSED
+TestCnpjClient::test_brasilapi_error_falls_back_to_receitaws  PASSED  ← NOVO
+TestCnpjClient::test_fonte_field_always_present               PASSED  ← NOVO
+TestCnpjClient::test_extract_cnpj_from_text_valid             PASSED
+TestCnpjClient::test_extract_cnpj_from_text_no_cnpj           PASSED
+TestCnpjClient::test_extract_cnpj_from_text_empty             PASSED
+TestJucespClient::test_builds_url_with_razao_social           PASSED
+TestJucespClient::test_always_requires_manual_review          PASSED
+TestJucespClient::test_none_inputs_returns_base_url           PASSED
+TestJucespClient::test_returned_keys                          PASSED
+TestOrchestrator::test_combines_all_results                   PASSED
+TestOrchestrator::test_partial_when_cnpj_missing              PASSED
+TestOrchestrator::test_error_isolation_when_cnpj_raises       PASSED
+TestOrchestrator::test_summary_uses_cnpj_razao_social_when_available PASSED
+
+[INTEGRAÇÃO — domínios reais]
+tests/test_lookup.py::test_real_domain_lookup_h2_criterion
+
+============================================================
+DOMÍNIO: magazineluiza.com.br
+STATUS GERAL: found | revisão manual: True
+
+── WHOIS (found)
+   Registrante:  MAGAZINE LUIZA S/A
+   Responsável:  Andre Fatala
+   Documento:    47.960.950/0001-21
+   Criado em:    1997-10-06
+   Expira em:    2030-10-06
+   Contato [ANFAT16]: Andre Fatala <infra@luizalabs.com>
+   Contato [REMAG87]: Registro Magazine <infra@luizalabs.com>
+   Registro.br:  https://registro.br/tecnologia/ferramentas/whois?search=magazineluiza.com.br
+
+── CNPJ (found)
+   CNPJ:         47.960.950/0001-21
+   Razão social: MAGAZINE LUIZA S/A
+   Fantasia:     MAGAZINE LUIZA
+   Situação:     ATIVA
+   Atividade:    Lojas de departamentos ou magazines, exceto lojas francas (Duty free)
+   Endereço:     VOLUNTARIOS DA FRANCA, 1465, CENTRO, FRANCA, SP
+   CEP:          14400490
+   Telefone:     1637112002
+   E-mail:       —
+   Nat. jurídica:Sociedade Anônima Aberta
+   Capital soc.: 14202162000
+   Fonte:        brasilapi
+   Sócios:       ANDRE LUIZ DE SOUZA FATALA — Diretor, FABRICIO BITTAR GARCIA — Diretor,
+                 FREDERICO TRAJANO INACIO RODRIGUES — Presidente,
+                 MARIA ISABEL BONFIM DE OLIVEIRA — Diretor,
+                 ROBERTO BELLISSIMO RODRIGUES — Diretor
+
+── JUCESP (manual_required)
+   JUCESP:       https://www.jucesponline.sp.gov.br
+   ⚠ Consulta JUCESP requer verificação manual — link direto gerado para agilizar
+
+============================================================
+DOMÍNIO: nubank.com.br
+STATUS GERAL: found | revisão manual: True
+
+── WHOIS (found)
+   Registrante:  NU PAGAMENTOS SA
+   Responsável:  Nubank Domínios
+   Documento:    18.236.120/0001-58
+   Criado em:    2013-11-20
+   Expira em:    2026-11-20
+   Contato [EOSPA3]: EOS Solucoes de Pagamento <dominios@nubank.com.br>
+   Registro.br:  https://registro.br/tecnologia/ferramentas/whois?search=nubank.com.br
+
+── CNPJ (found)
+   CNPJ:         18.236.120/0001-58
+   Razão social: NU PAGAMENTOS S.A. - INSTITUICAO DE PAGAMENTO
+   Fantasia:     —
+   Situação:     ATIVA
+   Atividade:    Administração de cartões de crédito
+   Endereço:     CAPOTE VALENTE, 120, PINHEIROS, SAO PAULO, SP
+   CEP:          05409000
+   Telefone:     1111111111
+   E-mail:       —
+   Nat. jurídica:Sociedade Anônima Fechada
+   Capital soc.: 8658560000
+   Fonte:        brasilapi
+   Sócios:       ARTHUR FERREIRA VALADAO — Diretor, BRUNO DILDA — Diretor,
+                 BRUNO GUSMAO ROCHA — Diretor, CAIO CEZAR BANTI — Diretor,
+                 EDUARDO ALCEBIADES LOPES — Diretor, FABRICIO SOUZA DE LIMA — Diretor,
+                 GUILHERME MARQUES DO LAGO — Diretor, HENRIQUE CAMOSSA SALDANHA FRAGELLI — Diretor,
+                 JEREMY TAYLOR SELESNER — Diretor, JOAO RAFAEL MULLER BANZATO — Diretor,
+                 JULIANA AUGUSTO APARECIDA ROSCHEL DA SILVA — Diretor,
+                 LIVIA MARTINES CHANES — Presidente,
+                 MARISTELA OLIVEIRA CALAZANS DE SOUZA — Diretor,
+                 RODRIGO SANTOS SILVA — Diretor, TULIO MAIA GONZAGA DE OLIVEIRA — Diretor,
+                 VALESCA CIDRONIO GOMES — Diretor
+
+── JUCESP (manual_required)
+   JUCESP:       https://www.jucesponline.sp.gov.br
+   ⚠ Consulta JUCESP requer verificação manual — link direto gerado para agilizar
+
+============================================================
+DOMÍNIO: natura.com.br
+STATUS GERAL: found | revisão manual: True
+
+── WHOIS (found)
+   Registrante:  NATURA COSMETICOS S/A
+   Responsável:  Natura Cosmeticos S/A
+   Documento:    71.673.990/0001-77
+   Criado em:    1996-02-08
+   Expira em:    2027-02-08
+   Contato [NACSA19]: Natura Cosmeticos S/A <dominiosnatura@natura.net>
+   Contato [NACSA38]: Natura Cosmeticos S/A <leonardolopes@natura.net>
+   Registro.br:  https://registro.br/tecnologia/ferramentas/whois?search=natura.com.br
+
+── CNPJ (found)
+   CNPJ:         71.673.990/0001-77
+   Razão social: NATURA COSMETICOS S/A
+   Fantasia:     NATURA
+   Situação:     ATIVA
+   Atividade:    Comércio atacadista de cosméticos e produtos de perfumaria
+   Endereço:     ALEXANDRE COLARES, 1188, PQ ANHANGUERA, SAO PAULO, SP
+   CEP:          05106000
+   Telefone:     1143897317
+   E-mail:       —
+   Nat. jurídica:Sociedade Anônima Aberta
+   Capital soc.: 6000000000
+   Fonte:        brasilapi
+   Sócios:       AGENOR LEAO DE ALMEIDA JUNIOR — Diretor,
+                 ANA BEATRIZ MACEDO DA COSTA — Diretor,
+                 JOAO PAULO BROTTO GONCALVES FERREIRA — Diretor,
+                 SILVIA LOPES VILAS BOAS MAGALHAES — Diretor
+
+── JUCESP (manual_required)
+   JUCESP:       https://www.jucesponline.sp.gov.br
+   ⚠ Consulta JUCESP requer verificação manual — link direto gerado para agilizar
+
+Taxa de sucesso H2: 100% (3/3)
+PASSED
+
+======================= 23 passed, 973 warnings in 5.29s =======================
+
+---
+Execução: 2026-03-18
+Versão: v2 — BrasilAPI como primária + receitaws como fallback automático
+Novos testes: test_brasilapi_error_falls_back_to_receitaws, test_fonte_field_always_present
+Output expandido: CEP, Telefone, E-mail, Natureza jurídica, Capital social, Fonte
+Nota: todos os 3 domínios retornaram CNPJ via BrasilAPI sem necessidade de fallback.
