@@ -246,3 +246,103 @@ class TestPdfExporterIdentidade:
         from src.export.pdf_exporter import _to_html
         html = _to_html("# Teste")
         assert "Goulart" in html
+
+
+# ─── helpers para Task 7 / Task 8 ─────────────────────────────────────────────
+
+def _make_full_item(
+    page_url="https://example.com/page",
+    domain="example.com",
+    razao_social="Empresa Exemplo Ltda",
+    nome_fantasia="Exemplo",
+    cnpj="12.345.678/0001-99",
+    situacao="ATIVA",
+    natureza_juridica="206-2 - Sociedade Empresária Limitada",
+    capital_social="100000.00",
+    logradouro="Rua das Flores, 123",
+    cep="01310-100",
+    municipio="São Paulo",
+    uf="SP",
+    telefone="(11) 3000-0000",
+    email="contato@empresa.com",
+    atividade_principal="Desenvolvimento de sistemas",
+    fonte="https://www.receitaws.com.br/v1/cnpj/12345678000199",
+    socios=None,
+) -> dict:
+    if socios is None:
+        socios = [{"nome": "João da Silva", "qualificacao": "Sócio Administrador"}]
+    return {
+        "search_result": {"page_url": page_url, "domain": domain, "source": "facecheck", "confidence": 0.87},
+        "lookup": {
+            "whois": {"registrant": "Empresa Exemplo Ltda", "created": "2020-01-01", "expiration_date": "2026-01-01"},
+            "cnpj_data": {
+                "cnpj": cnpj,
+                "razao_social": razao_social,
+                "nome_fantasia": nome_fantasia,
+                "situacao": situacao,
+                "natureza_juridica": natureza_juridica,
+                "capital_social": capital_social,
+                "logradouro": logradouro,
+                "cep": cep,
+                "municipio": municipio,
+                "uf": uf,
+                "telefone": telefone,
+                "email": email,
+                "atividade_principal": atividade_principal,
+                "fonte": fonte,
+                "socios": socios,
+            },
+            "jucesp": {"jucesp_search_url": "https://www.jucesponline.sp.gov.br/ResultadoBusca.aspx?chave=exemplo"},
+            "summary": {"razao_social": razao_social, "cnpj": cnpj, "registrant": "Empresa Exemplo Ltda"},
+        },
+    }
+
+
+# ─── TestDossieGeneratorCamposCompletos ────────────────────────────────────────
+
+class TestDossieGeneratorCamposCompletos:
+
+    def test_nome_fantasia_present(self):
+        md = generate(client_name="C", violations=[_make_full_item()], investigate=[], date="2026-03-18")
+        assert "**Nome fantasia:**" in md
+        assert "Exemplo" in md
+
+    def test_atividade_principal_present(self):
+        md = generate(client_name="C", violations=[_make_full_item()], investigate=[], date="2026-03-18")
+        assert "**Atividade principal:**" in md
+        assert "Desenvolvimento de sistemas" in md
+
+    def test_telefone_present(self):
+        md = generate(client_name="C", violations=[_make_full_item()], investigate=[], date="2026-03-18")
+        assert "**Telefone:**" in md
+        assert "(11) 3000-0000" in md
+
+    def test_email_present(self):
+        md = generate(client_name="C", violations=[_make_full_item()], investigate=[], date="2026-03-18")
+        assert "**E-mail:**" in md
+        assert "contato@empresa.com" in md
+
+    def test_cep_in_endereco(self):
+        md = generate(client_name="C", violations=[_make_full_item()], investigate=[], date="2026-03-18")
+        assert "01310-100" in md
+
+    def test_natureza_juridica_present(self):
+        md = generate(client_name="C", violations=[_make_full_item()], investigate=[], date="2026-03-18")
+        assert "**Natureza jurídica:**" in md
+        assert "Sociedade Empresária Limitada" in md
+
+    def test_capital_social_present(self):
+        md = generate(client_name="C", violations=[_make_full_item()], investigate=[], date="2026-03-18")
+        assert "**Capital social:**" in md
+        assert "100000" in md
+
+    def test_fonte_present(self):
+        md = generate(client_name="C", violations=[_make_full_item()], investigate=[], date="2026-03-18")
+        assert "**Fonte CNPJ:**" in md
+        assert "receitaws" in md
+
+    def test_missing_optional_fields_show_placeholder(self):
+        item = _make_full_item(nome_fantasia=None, telefone=None, email=None, atividade_principal=None)
+        md = generate(client_name="C", violations=[item], investigate=[], date="2026-03-18")
+        # Each None field must still appear as placeholder (at least 4 occurrences total)
+        assert md.count("— não identificado") >= 4

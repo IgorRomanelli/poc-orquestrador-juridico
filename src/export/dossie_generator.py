@@ -77,15 +77,27 @@ def _render_item(index: int, item: dict, label: str = "Violação") -> str:
     page_url = _v(search.get("page_url"))
     domain = _v(search.get("domain"))
     razao_social = _v(summary.get("razao_social"))
+    nome_fantasia = _v(cnpj_data.get("nome_fantasia"))
     cnpj = _v(cnpj_data.get("cnpj") or summary.get("cnpj"))
     socios = _format_socios(cnpj_data.get("socios", []))
     situacao = _v(cnpj_data.get("situacao"))
+    natureza_juridica = _v(cnpj_data.get("natureza_juridica"))
+    capital_social = _v(cnpj_data.get("capital_social"))
     logradouro = _v(cnpj_data.get("logradouro") or summary.get("address"))
+    cep = _v(cnpj_data.get("cep"))
     municipio = cnpj_data.get("municipio") or ""
     uf = cnpj_data.get("uf") or ""
+    telefone = _v(cnpj_data.get("telefone"))
+    email = _v(cnpj_data.get("email"))
+    atividade_principal = _v(cnpj_data.get("atividade_principal"))
+    fonte = _v(cnpj_data.get("fonte"))
+
     endereco = logradouro
     if municipio and logradouro != _PLACEHOLDER:
         endereco = f"{logradouro}, {municipio}/{uf}" if uf else f"{logradouro}, {municipio}"
+    if cep != _PLACEHOLDER and municipio:
+        endereco = f"{endereco} — CEP {cep}"
+
     whois_dates = _format_whois_dates(whois)
     registrant = _v(whois.get("registrant"))
     jucesp_url = _v(jucesp.get("jucesp_search_url"))
@@ -105,13 +117,20 @@ def _render_item(index: int, item: dict, label: str = "Violação") -> str:
         f"- **URL:** {page_url}\n"
         f"- **Domínio:** {domain}\n"
         f"- **Empresa responsável:** {razao_social}\n"
+        f"- **Nome fantasia:** {nome_fantasia}\n"
         f"- **CNPJ:** {cnpj}\n"
+        f"- **Natureza jurídica:** {natureza_juridica}\n"
+        f"- **Capital social:** {capital_social}\n"
+        f"- **Atividade principal:** {atividade_principal}\n"
         f"- **Responsável:** {socios}\n"
         f"- **Situação:** {situacao}\n"
         f"- **Endereço:** {endereco}\n"
+        f"- **Telefone:** {telefone}\n"
+        f"- **E-mail:** {email}\n"
         f"- **WHOIS:** {whois_dates}\n"
         f"- **Registrante WHOIS:** {registrant}\n"
         f"- **JUCESP:** {jucesp_url}\n"
+        f"- **Fonte CNPJ:** {fonte}\n"
         f"- **Confiança da busca:** {confidence}\n"
     )
 
