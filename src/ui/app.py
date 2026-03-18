@@ -30,7 +30,10 @@ load_dotenv()
 from src.export.dossie_generator import generate as generate_dossie
 from src.export.pdf_exporter import to_bytes as pdf_to_bytes
 from src.lookup.orchestrator import lookup_domain
-from src.search.orchestrator import search_image
+from src.search.aggregator import aggregate
+from src.search.facecheck_client import search_by_face
+from src.search.google_vision_client import search_by_image
+from src.search.orchestrator import search_image  # fallback
 
 _SOCIAL_DOMAINS = frozenset({
     "instagram.com", "facebook.com", "twitter.com", "x.com",
@@ -177,20 +180,79 @@ if uploaded_file:
         st.image(uploaded_file, width=160, caption="Foto carregada")
     with col_btn:
         if st.button("Buscar ocorrências", type="primary", use_container_width=False):
-            with st.spinner("Buscando em FaceCheck e Google Vision..."):
-                # Salvar arquivo temporariamente para os clientes (precisam de path)
-                suffix = os.path.splitext(uploaded_file.name)[-1] or ".jpg"
-                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                    tmp.write(uploaded_file.getvalue())
-                    tmp_path = tmp.name
+            suffix = os.path.splitext(uploaded_file.name)[-1] or ".jpg"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                tmp.write(uploaded_file.getvalue())
+                tmp_path = tmp.name
 
-                try:
-                    result = _run_async(search_image(tmp_path))
-                except Exception as exc:
-                    st.error(f"Erro na busca de imagem: {exc}")
-                    result = None
-                finally:
-                    os.unlink(tmp_path)
+            try:
+                import asyncio as _asyncio
+                import concurrent.futures
+                import time
+
+                _err = {"status": "error", "results": [], "message": "não executado"}
+                fc_result = _err
+                gv_result = _err
+
+                with st.status("🔍 Buscando ocorrências...", expanded=True) as search_status:
+                    ph_fc = st.empty()
+                    ph_gv = st.empty()
+                    ph_fc.info("⏳ FaceCheck: aguardando...")
+                    ph_gv.info("⏳ Google Vision: aguardando...")
+
+                    def _run_fc():
+                        try:
+                            return _asyncio.run(search_by_face(tmp_path))
+                        except Exception as exc:
+                            return {"status": "error", "results": [], "message": str(exc)}
+
+                    def _run_gv():
+                        try:
+                            return _asyncio.run(search_by_image(tmp_path))
+                        except Exception as exc:
+                            return {"status": "error", "results": [], "message": str(exc)}
+
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                        fc_future = executor.submit(_run_fc)
+                        gv_future = executor.submit(_run_gv)
+
+                        fc_shown = False
+                        gv_shown = False
+                        while not (fc_future.done() and gv_future.done()):
+                            if fc_future.done() and not fc_shown:
+                                fc_result = fc_future.result()
+                                n = len(fc_result.get("results", []))
+                                ph_fc.success(f"✅ FaceCheck: {n} resultado(s)")
+                                fc_shown = True
+                            if gv_future.done() and not gv_shown:
+                                gv_result = gv_future.result()
+                                n = len(gv_result.get("results", []))
+                                ph_gv.success(f"✅ Google Vision: {n} resultado(s)")
+                                gv_shown = True
+                            time.sleep(0.15)
+
+                        if not fc_shown:
+                            fc_result = fc_future.result()
+                            n = len(fc_result.get("results", []))
+                            ph_fc.success(f"✅ FaceCheck: {n} resultado(s)")
+                        if not gv_shown:
+                            gv_result = gv_future.result()
+                            n = len(gv_result.get("results", []))
+                            ph_gv.success(f"✅ Google Vision: {n} resultado(s)")
+
+                    result = aggregate(fc_result, gv_result)
+                    total = result.get("total_deduplicated", 0)
+                    search_status.update(
+                        label=f"✅ {total} resultado(s) encontrado(s)",
+                        state="complete",
+                        expanded=False,
+                    )
+
+            except Exception as exc:
+                st.error(f"Erro na busca de imagem: {exc}")
+                result = None
+            finally:
+                os.unlink(tmp_path)
 
             if result is not None:
                 st.session_state.search_result = result
