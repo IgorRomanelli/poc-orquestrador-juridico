@@ -179,13 +179,13 @@ async def enrich_with_rekognition(items: list[dict], source_image_bytes: bytes) 
         A mesma lista com confidence_rekognition adicionado onde possível.
         Itens sem imagem acessível ou com erro ficam com confidence_rekognition=None.
     """
-    for item in items:
+    async def _enrich_one(item: dict) -> None:
         target_bytes = await asyncio.to_thread(_get_target_bytes, item)
         if target_bytes is None:
             item["confidence_rekognition"] = None
-            continue
-
+            return
         result = await asyncio.to_thread(compare_faces, source_image_bytes, target_bytes)
         item["confidence_rekognition"] = result.get("similarity")
 
+    await asyncio.gather(*(_enrich_one(item) for item in items))
     return items
