@@ -46,6 +46,18 @@ def _is_social(item: dict) -> bool:
     return any(social in domain for social in _SOCIAL_DOMAINS)
 
 
+def _site_priority(item: dict) -> int:
+    """
+    Prioridade de ordenação por tipo de site.
+    0 = site comercial / Google Maps (maior relevância jurídica)
+    1 = rede social (menor relevância)
+    """
+    return 1 if _is_social(item) else 0
+
+
+_CLASSIF_PRIORITY = {"pendente": 0, "violacao": 1, "investigar": 2, "nao_violacao": 3}
+
+
 # ─── configuração da página ────────────────────────────────────────────────────
 
 st.set_page_config(
@@ -235,6 +247,13 @@ if "search_result" in st.session_state:
         r for r in results
         if _passes_filter(r, filter_sources, conf_min, conf_max, include_no_conf, hide_social)
     ]
+    filtered_results = sorted(
+        filtered_results,
+        key=lambda r: (
+            _CLASSIF_PRIORITY.get(classifs.get(r.get("page_url", ""), "pendente"), 0),
+            _site_priority(r),
+        ),
+    )
 
     st.subheader(f"Resultados ({len(filtered_results)} exibidos de {len(results)})")
     st.caption(
