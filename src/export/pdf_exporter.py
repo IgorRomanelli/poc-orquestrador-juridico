@@ -104,11 +104,17 @@ def export(markdown_text: str, output_path: str) -> str:
 
     Returns:
         output_path confirmado.
+
+    Raises:
+        RuntimeError: se a geração ou escrita do PDF falhar.
     """
     from weasyprint import HTML
 
     html = _to_html(markdown_text)
-    HTML(string=html).write_pdf(output_path)
+    try:
+        HTML(string=html).write_pdf(output_path)
+    except Exception as exc:
+        raise RuntimeError(f"Erro ao gerar PDF em '{output_path}': {exc}") from exc
     return output_path
 
 
@@ -122,8 +128,14 @@ def to_bytes(markdown_text: str) -> bytes:
 
     Returns:
         bytes do PDF gerado.
+
+    Raises:
+        RuntimeError: se a geração do PDF falhar.
     """
     from weasyprint import HTML
 
     html = _to_html(markdown_text)
-    return HTML(string=html).write_pdf()
+    try:
+        return HTML(string=html).write_pdf()
+    except Exception as exc:
+        raise RuntimeError(f"Erro ao gerar PDF: {exc}") from exc
