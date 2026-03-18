@@ -461,6 +461,165 @@ class TestSearchOrchestrator:
         assert result["status"] == "partial"
 
 
+# ─── rekognition_client ────────────────────────────────────────────────────────
+
+class TestRekognitionClient:
+
+    def test_returns_similarity_when_faces_match(self):
+        """compare_faces retorna similarity (0–1) quando rostos são encontrados."""
+        from unittest.mock import MagicMock, patch
+        from src.search.rekognition_client import compare_faces
+
+        mock_rekognition = MagicMock()
+        mock_rekognition.compare_faces.return_value = {
+            "FaceMatches": [{"Similarity": 94.5, "Face": {}}],
+            "UnmatchedFaces": [],
+        }
+
+        with (
+            patch("src.search.rekognition_client._is_configured", True),
+            patch("src.search.rekognition_client._get_client", return_value=mock_rekognition),
+        ):
+            result = compare_faces(b"source_bytes", b"target_bytes")
+
+        assert result["status"] == "found"
+        assert abs(result["similarity"] - 0.945) < 0.001
+
+    def test_returns_not_found_when_no_match(self):
+        """compare_faces retorna not_found quando não há match de rosto."""
+        from unittest.mock import MagicMock, patch
+        from src.search.rekognition_client import compare_faces
+
+        mock_rekognition = MagicMock()
+        mock_rekognition.compare_faces.return_value = {
+            "FaceMatches": [],
+            "UnmatchedFaces": [{"BoundingBox": {}}],
+        }
+
+        with (
+            patch("src.search.rekognition_client._is_configured", True),
+            patch("src.search.rekognition_client._get_client", return_value=mock_rekognition),
+        ):
+            result = compare_faces(b"source_bytes", b"target_bytes")
+
+        assert result["status"] == "not_found"
+        assert result["similarity"] is None
+
+    def test_returns_error_when_no_face_detected(self):
+        """compare_faces retorna error quando Rekognition não detecta rosto."""
+        from unittest.mock import MagicMock, patch
+        from botocore.exceptions import ClientError
+        from src.search.rekognition_client import compare_faces
+
+        mock_rekognition = MagicMock()
+        mock_rekognition.compare_faces.side_effect = ClientError(
+            {"Error": {"Code": "InvalidParameterException", "Message": "No face detected"}},
+            "CompareFaces",
+        )
+
+        with (
+            patch("src.search.rekognition_client._is_configured", True),
+            patch("src.search.rekognition_client._get_client", return_value=mock_rekognition),
+        ):
+            result = compare_faces(b"source_bytes", b"target_bytes")
+
+        assert result["status"] == "error"
+        assert result["similarity"] is None
+
+    def test_returns_error_when_credentials_missing(self):
+        """compare_faces retorna error quando credenciais AWS não estão configuradas."""
+        from unittest.mock import patch
+        from src.search.rekognition_client import compare_faces
+        with patch("src.search.rekognition_client._is_configured", False):
+            result = compare_faces(b"source_bytes", b"target_bytes")
+        assert result["status"] == "error"
+        assert "credenciais" in result.get("message", "").lower()
+
+
+# ─── enriquecimento Rekognition ────────────────────────────────────────────────
+
+class TestRekognitionEnrichment:
+
+    def _make_item(self, source="google_vision", image_url=None, thumbnail=None):
+        return {
+            "image_url": image_url,
+            "page_url": "https://example.com/page",
+            "domain": "example.com",
+            "source": source,
+            "confidence": None,
+            "preview_thumbnail": thumbnail,
+        }
+
+    async def test_enrich_adds_confidence_rekognition_from_thumbnail(self):
+        """Item com preview_thumbnail base64 recebe confidence_rekognition."""
+        import base64
+        from unittest.mock import patch
+        from src.search.aggregator import enrich_with_rekognition
+
+        fake_thumbnail = "data:image/jpeg;base64," + base64.b64encode(b"fake_img").decode()
+        items = [self._make_item(source="facecheck", thumbnail=fake_thumbnail)]
+        mock_compare = {"status": "found", "similarity": 0.92, "message": None}
+
+        with patch("src.search.aggregator.compare_faces", return_value=mock_compare):
+            enriched = await enrich_with_rekognition(items, source_image_bytes=b"source")
+
+        assert enriched[0].get("confidence_rekognition") == 0.92
+
+    async def test_enrich_adds_confidence_rekognition_from_image_url(self):
+        """Item com image_url recebe confidence_rekognition via download."""
+        from unittest.mock import MagicMock, patch
+        from src.search.aggregator import enrich_with_rekognition
+
+        items = [self._make_item(source="google_vision", image_url="https://cdn.example.com/img.jpg")]
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = b"downloaded_image_bytes"
+        mock_compare = {"status": "found", "similarity": 0.88, "message": None}
+
+        with (
+            patch("httpx.get", return_value=mock_response),
+            patch("src.search.aggregator.compare_faces", return_value=mock_compare),
+        ):
+            enriched = await enrich_with_rekognition(items, source_image_bytes=b"source")
+
+        assert enriched[0].get("confidence_rekognition") == 0.88
+
+    async def test_enrich_skips_item_without_image(self):
+        """Item sem thumbnail nem image_url não recebe confidence_rekognition."""
+        from src.search.aggregator import enrich_with_rekognition
+
+        items = [self._make_item(source="google_vision", image_url=None, thumbnail=None)]
+        enriched = await enrich_with_rekognition(items, source_image_bytes=b"source")
+
+        assert enriched[0].get("confidence_rekognition") is None
+
+    async def test_enrich_handles_rekognition_error_gracefully(self):
+        """Erro no Rekognition não interrompe enriquecimento dos outros itens."""
+        import base64
+        from unittest.mock import patch
+        from src.search.aggregator import enrich_with_rekognition
+
+        fake_thumbnail = "data:image/jpeg;base64," + base64.b64encode(b"fake").decode()
+        items = [
+            self._make_item(source="facecheck", thumbnail=fake_thumbnail),
+            self._make_item(source="facecheck", thumbnail=fake_thumbnail),
+        ]
+
+        call_count = 0
+        def mock_compare(source, target):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return {"status": "error", "similarity": None, "message": "timeout"}
+            return {"status": "found", "similarity": 0.75, "message": None}
+
+        with patch("src.search.aggregator.compare_faces", side_effect=mock_compare):
+            enriched = await enrich_with_rekognition(items, source_image_bytes=b"source")
+
+        assert enriched[0].get("confidence_rekognition") is None
+        assert enriched[1].get("confidence_rekognition") == 0.75
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Seção 2 — Testes de integração com imagens reais (skipados por padrão)
 #
