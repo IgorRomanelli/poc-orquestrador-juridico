@@ -104,6 +104,57 @@ class TestWhoisClient:
         assert result["status"] == "error"
         assert result["requires_manual_review"] is True
 
+    async def test_extracts_cnpj_from_owner_id_field(self):
+        """WHOIS com campo owner-id contendo CNPJ preenche 'document'."""
+        from src.lookup.whois_client import lookup_whois
+
+        fake_parsed = MagicMock()
+        fake_parsed.org = "Empresa Exemplo Ltda"
+        fake_parsed.emails = "contato@exemplo.com.br"
+        fake_parsed.registrar = "Registro.br"
+        fake_parsed.creation_date = None
+        fake_parsed.expiration_date = None
+        fake_parsed.name_servers = ["ns1.exemplo.com.br"]
+        # Texto bruto simulando campo owner-id do Registro.br
+        fake_parsed.text = (
+            "domain: exemplo.com.br\n"
+            "ownerid: 11.222.333/0001-81\n"
+            "owner: Empresa Exemplo Ltda\n"
+        )
+
+        with patch("src.lookup.whois_client.whois.whois", return_value=fake_parsed):
+            result = await lookup_whois("exemplo.com.br")
+
+        assert result["status"] == "found"
+        assert result["document"] == "11.222.333/0001-81"
+
+    async def test_extracts_contacts_from_nic_hdl_br_block(self):
+        """Bloco nic-hdl-br com person e e-mail é extraído para 'contacts'."""
+        from src.lookup.whois_client import lookup_whois
+
+        fake_parsed = MagicMock()
+        fake_parsed.org = "Empresa Exemplo Ltda"
+        fake_parsed.emails = "contato@exemplo.com.br"
+        fake_parsed.registrar = "Registro.br"
+        fake_parsed.creation_date = None
+        fake_parsed.expiration_date = None
+        fake_parsed.name_servers = []
+        fake_parsed.text = (
+            "nic-hdl-br: ABC123\n"
+            "person: João da Silva\n"
+            "e-mail: joao@exemplo.com.br\n"
+            "country: BR\n"
+        )
+
+        with patch("src.lookup.whois_client.whois.whois", return_value=fake_parsed):
+            result = await lookup_whois("exemplo.com.br")
+
+        assert result["status"] == "found"
+        assert len(result["contacts"]) == 1
+        assert result["contacts"][0]["name"] == "João da Silva"
+        assert result["contacts"][0]["email"] == "joao@exemplo.com.br"
+        assert result["contacts"][0]["id"] == "ABC123"
+
 
 # ─── cnpj_client ──────────────────────────────────────────────────────────────
 
@@ -314,13 +365,15 @@ class TestCnpjClient:
 class TestJucespClient:
 
     async def test_builds_url_with_razao_social(self):
-        """URL gerada aponta para o portal JUCESP Online."""
+        """URL gerada aponta para o portal JUCESP Online com razão social como parâmetro."""
         from src.lookup.jucesp_client import lookup_jucesp
 
         result = await lookup_jucesp("Empresa Exemplo Ltda", "11222333000181")
 
         assert "jucesponline.sp.gov.br" in result["jucesp_search_url"]
         assert result["status"] == "manual_required"
+        # URL deve conter parâmetro de busca quando razão social é fornecida
+        assert "Empresa" in result["jucesp_search_url"] or "q=" in result["jucesp_search_url"]
 
     async def test_always_requires_manual_review(self):
         """requires_manual_review é sempre True, independente dos inputs."""
