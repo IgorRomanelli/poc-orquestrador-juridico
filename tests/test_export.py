@@ -223,3 +223,26 @@ class TestPdfExporter:
         assert "Cliente Verificação" in html
         assert "Empresa ABC Ltda" in html
         assert "Dossiê de Violação de Imagem" in html
+
+
+# ─── TestPdfExporterIdentidade ─────────────────────────────────────────────────
+
+class TestPdfExporterIdentidade:
+
+    def test_html_contains_logo(self):
+        """PDF HTML deve conter o logo do escritório como base64."""
+        from src.export.pdf_exporter import _to_html
+        html = _to_html("# Teste")
+        assert "data:image/png;base64," in html, "HTML deve conter logo base64"
+
+    def test_html_contains_brand_colors(self):
+        """CSS deve usar as cores da marca Goulart|Law."""
+        from src.export.pdf_exporter import _CSS
+        assert "#C00000" in _CSS, "Vermelho primário ausente"
+        assert "#1A3566" in _CSS, "Azul primário ausente"
+
+    def test_html_contains_footer_text(self):
+        """Rodapé deve mencionar Goulart|Law."""
+        from src.export.pdf_exporter import _to_html
+        html = _to_html("# Teste")
+        assert "Goulart" in html
