@@ -14,6 +14,7 @@ Como rodar:
 """
 
 import asyncio
+import base64
 import os
 import sys
 import tempfile
@@ -77,6 +78,29 @@ def _init_classifications(results: list):
 
 def _classify(url: str, label: str):
     st.session_state.classifications[url] = label
+
+
+def _fetch_image_base64(url: str) -> str | None:
+    """
+    Baixa imagem de uma URL e retorna como data URL base64.
+    Retorna None se a URL não for acessível ou não for uma imagem.
+    Timeout de 8s para não travar a geração do dossiê.
+    """
+    if not url:
+        return None
+    try:
+        import httpx
+        with httpx.Client(timeout=8.0, follow_redirects=True) as client:
+            resp = client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code != 200:
+            return None
+        content_type = resp.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+        if not content_type.startswith("image/"):
+            return None
+        b64 = base64.b64encode(resp.content).decode()
+        return f"data:{content_type};base64,{b64}"
+    except Exception:
+        return None
 
 
 def _passes_filter(
@@ -311,14 +335,23 @@ if "search_result" in st.session_state:
                         else:
                             domain_lookup[d] = lr
 
-                with st.spinner("Gerando dossiê..."):
+                with st.spinner("Gerando dossiê (buscando imagens)..."):
                     violations_data = []
                     investigate_data = []
 
                     for item in marked_items:
                         domain = item.get("domain", "")
+                        item_copy = dict(item)
+
+                        # Tentar embutir imagem para o PDF
+                        img_url = item_copy.get("image_url", "")
+                        if img_url and not item_copy.get("preview_thumbnail"):
+                            thumbnail = _fetch_image_base64(img_url)
+                            if thumbnail:
+                                item_copy["preview_thumbnail"] = thumbnail
+
                         enriched = {
-                            "search_result": item,
+                            "search_result": item_copy,
                             "lookup": domain_lookup.get(domain, {}),
                         }
                         label = classifs.get(item.get("page_url", ""))
