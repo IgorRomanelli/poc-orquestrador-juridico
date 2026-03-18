@@ -4,11 +4,25 @@
 
 **Goal:** Adicionar SerpAPI como fonte complementar de busca reversa de imagem, paralela ao FaceCheck e Google Vision, aumentando o recall de resultados.
 
-**Architecture:** Um novo cliente `serpapi_client.py` faz upload temporário da imagem via ImgBB (gratuito, expira automaticamente) para obter uma URL pública, depois consulta SerpAPI Google Reverse Image com essa URL. O resultado é integrado ao fluxo existente via `aggregate()` no `app.py`, rodando em paralelo com as outras fontes. O `orchestrator.py` não é modificado — a busca do app já contorna o orquestrador.
+**Architecture:** Um novo cliente `s3_temp_client.py` faz upload temporário da imagem para um bucket S3 privado e gera uma presigned URL com expiração de 60 segundos. O cliente `serpapi_client.py` usa essa URL para consultar o SerpAPI Google Reverse Image. Após a busca, a imagem é deletada do S3. O resultado é integrado ao fluxo existente via `aggregate()` no `app.py`, rodando em paralelo com as outras fontes.
 
-**Tech Stack:** SerpAPI REST API, ImgBB API (hosting temporário), httpx, variáveis de ambiente `SERPAPI_KEY` e `IMGBB_KEY`.
+**Tech Stack:** SerpAPI REST API, AWS S3 (presigned URLs via boto3 — já instalado), variáveis de ambiente `SERPAPI_KEY` e `AWS_S3_BUCKET` (as credenciais AWS já existem no `.env`).
 
-> ⚠️ **Nota de privacidade:** A foto do cliente é enviada ao ImgBB (hosting temporário) e ao SerpAPI (terceiros). Na POC isso é aceitável — a foto já vai ao FaceCheck e Google Vision. Em produção, substituir ImgBB por storage privado com signed URL (ex: S3 presigned URL).
+> ✅ **Segurança:** A foto permanece em infraestrutura privada (seu bucket S3). A presigned URL expira em 60 segundos e o objeto é deletado após a busca. Nenhuma imagem vai para serviços públicos de terceiros.
+
+---
+
+## Pré-requisito: criar bucket S3
+
+Antes de executar o plano, crie um bucket S3 privado:
+
+1. Acesse [console.aws.amazon.com/s3](https://console.aws.amazon.com/s3)
+2. Clique em **Create bucket**
+3. Nome: `poc-dossie-temp` (ou qualquer nome único)
+4. Região: `us-east-1` (mesma do Rekognition)
+5. Mantenha **Block all public access** ativado
+6. Clique em **Create bucket**
+7. Adicione ao `.env`: `AWS_S3_BUCKET=poc-dossie-temp`
 
 ---
 
@@ -16,160 +30,176 @@
 
 | Arquivo | Ação | Responsabilidade |
 |---------|------|-----------------|
-| `src/search/imgbb_client.py` | Criar | Upload de imagem → URL temporária |
+| `src/search/s3_temp_client.py` | Criar | Upload → presigned URL → delete no S3 |
 | `src/search/serpapi_client.py` | Criar | Busca reversa via SerpAPI usando URL |
 | `src/ui/app.py` | Modificar | Adicionar SerpAPI ao fluxo paralelo de busca |
 | `tests/test_search.py` | Modificar | Testes dos dois novos clientes |
 | `.env.example` | Modificar | Documentar as novas variáveis |
-| `requirements.txt` | Verificar | httpx já está presente |
 
 ---
 
-## Task 1: Cliente ImgBB
+## Task 1: Cliente S3 temporário
 
 **Files:**
-- Create: `src/search/imgbb_client.py`
-- Test: `tests/test_search.py` (classe `TestImgbbClient`)
+- Create: `src/search/s3_temp_client.py`
+- Test: `tests/test_search.py` (classe `TestS3TempClient`)
 
 ### Contexto
 
-ImgBB API: `POST https://api.imgbb.com/1/upload` com `key=API_KEY&image=BASE64` (multipart ou form-encoded). Retorna `{"data": {"url": "...", "delete_url": "..."}}`. Imagens expiram em 60 segundos com o parâmetro `expiration=60`.
+O cliente usa `boto3` (já instalado) com as credenciais AWS existentes (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`). Nova variável: `AWS_S3_BUCKET`.
 
-Cadastro gratuito em imgbb.com → API Key em Account > API.
+Fluxo: `upload_and_get_url(bytes)` → faz `put_object` no S3 com key `temp-search/<uuid>.jpg` → gera presigned URL com `ExpiresIn=60` → retorna `(url, key)`. A key é usada depois para deletar o objeto via `delete_object(key)`.
 
-- [ ] **Step 1: Escrever o teste para upload bem-sucedido**
+- [ ] **Step 1: Escrever os testes**
 
 ```python
-# tests/test_search.py — adicionar dentro de uma nova classe TestImgbbClient
+# tests/test_search.py — adicionar classe TestS3TempClient
 
-class TestImgbbClient:
-    def test_upload_returns_url(self):
-        """Upload bem-sucedido retorna URL pública."""
+class TestS3TempClient:
+    def test_upload_returns_presigned_url(self):
+        """Upload bem-sucedido retorna URL presigned e key S3."""
         from unittest.mock import MagicMock, patch
-        from src.search.imgbb_client import upload_image
+        from src.search.s3_temp_client import upload_and_get_url
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "data": {"url": "https://i.ibb.co/abc/photo.jpg"},
-            "success": True,
-        }
+        mock_s3 = MagicMock()
+        mock_s3.generate_presigned_url.return_value = "https://s3.amazonaws.com/bucket/key?X-Amz-Signature=abc"
 
         with (
-            patch("src.search.imgbb_client._API_KEY", "fake-key"),
-            patch("httpx.post", return_value=mock_response),
+            patch("src.search.s3_temp_client._BUCKET", "test-bucket"),
+            patch("src.search.s3_temp_client._get_client", return_value=mock_s3),
         ):
-            url = upload_image(b"fake_image_bytes")
+            url, key = upload_and_get_url(b"fake_image_bytes")
 
-        assert url == "https://i.ibb.co/abc/photo.jpg"
+        assert url.startswith("https://s3.amazonaws.com")
+        assert key.startswith("temp-search/")
+        assert key.endswith(".jpg")
+        mock_s3.put_object.assert_called_once()
+        mock_s3.generate_presigned_url.assert_called_once()
 
-    def test_upload_raises_on_api_error(self):
-        """Erro de API levanta RuntimeError."""
+    def test_delete_removes_object(self):
+        """delete_object remove o objeto do bucket."""
         from unittest.mock import MagicMock, patch
-        from src.search.imgbb_client import upload_image
-        import pytest
+        from src.search.s3_temp_client import delete_object
 
-        mock_response = MagicMock()
-        mock_response.status_code = 400
-        mock_response.json.return_value = {"success": False, "error": {"message": "bad key"}}
+        mock_s3 = MagicMock()
 
         with (
-            patch("src.search.imgbb_client._API_KEY", "fake-key"),
-            patch("httpx.post", return_value=mock_response),
+            patch("src.search.s3_temp_client._BUCKET", "test-bucket"),
+            patch("src.search.s3_temp_client._get_client", return_value=mock_s3),
         ):
-            with pytest.raises(RuntimeError, match="ImgBB"):
-                upload_image(b"fake_image_bytes")
+            delete_object("temp-search/abc.jpg")
+
+        mock_s3.delete_object.assert_called_once_with(
+            Bucket="test-bucket", Key="temp-search/abc.jpg"
+        )
 
     def test_upload_raises_when_not_configured(self):
-        """Sem API key, levanta RuntimeError descritivo."""
+        """Sem bucket configurado, levanta RuntimeError descritivo."""
         from unittest.mock import patch
-        from src.search.imgbb_client import upload_image
+        from src.search.s3_temp_client import upload_and_get_url
         import pytest
 
-        with patch("src.search.imgbb_client._API_KEY", ""):
-            with pytest.raises(RuntimeError, match="IMGBB_KEY"):
-                upload_image(b"fake_image_bytes")
+        with patch("src.search.s3_temp_client._BUCKET", ""):
+            with pytest.raises(RuntimeError, match="AWS_S3_BUCKET"):
+                upload_and_get_url(b"fake_image_bytes")
 ```
 
 - [ ] **Step 2: Rodar os testes para confirmar falha**
 
 ```bash
-python3 -m pytest tests/test_search.py::TestImgbbClient -v
+python3 -m pytest tests/test_search.py::TestS3TempClient -v
 ```
 Esperado: `ERROR` (módulo não existe ainda)
 
-- [ ] **Step 3: Criar `src/search/imgbb_client.py`**
+- [ ] **Step 3: Criar `src/search/s3_temp_client.py`**
 
 ```python
 """
-Cliente ImgBB — hospedagem temporária de imagem para obter URL pública.
+Cliente S3 temporário — hospedagem segura de imagem para obter presigned URL.
 
 Necessário porque SerpAPI aceita apenas image_url, não upload direto.
-Imagens expiram em 60 segundos após o upload.
+A imagem fica em bucket S3 privado com presigned URL de 60 segundos.
+O objeto é deletado após o uso.
 
-Variável de ambiente: IMGBB_KEY
+Variáveis de ambiente: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+                       AWS_REGION (default: us-east-1), AWS_S3_BUCKET
 """
 
-import base64
 import os
+import uuid
 
-import httpx
+import boto3
 from dotenv import load_dotenv
 
 load_dotenv()
 
-_API_KEY = os.getenv("IMGBB_KEY", "")
-_UPLOAD_URL = "https://api.imgbb.com/1/upload"
+_BUCKET = os.getenv("AWS_S3_BUCKET", "")
+_REGION = os.getenv("AWS_REGION", "us-east-1")
 _EXPIRATION_SECONDS = 60
 
 
-def upload_image(image_bytes: bytes) -> str:
-    """
-    Faz upload de imagem para ImgBB e retorna URL pública temporária.
-
-    Args:
-        image_bytes: bytes da imagem (JPEG, PNG, WebP, etc.)
-
-    Returns:
-        URL pública da imagem (expira em 60s).
-
-    Raises:
-        RuntimeError: se IMGBB_KEY não configurada ou upload falhar.
-    """
-    if not _API_KEY:
-        raise RuntimeError("IMGBB_KEY não configurada — configure no .env")
-
-    b64 = base64.b64encode(image_bytes).decode("utf-8")
-    response = httpx.post(
-        _UPLOAD_URL,
-        data={
-            "key": _API_KEY,
-            "image": b64,
-            "expiration": _EXPIRATION_SECONDS,
-        },
-        timeout=15.0,
+def _get_client():
+    return boto3.client(
+        "s3",
+        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+        region_name=_REGION,
     )
 
-    payload = response.json()
-    if response.status_code != 200 or not payload.get("success"):
-        msg = payload.get("error", {}).get("message", str(response.status_code))
-        raise RuntimeError(f"ImgBB upload falhou: {msg}")
 
-    return payload["data"]["url"]
+def upload_and_get_url(image_bytes: bytes) -> tuple[str, str]:
+    """
+    Faz upload de imagem para S3 e retorna (presigned_url, s3_key).
+
+    Args:
+        image_bytes: bytes da imagem em formato JPEG.
+
+    Returns:
+        Tupla (url, key) onde url expira em 60 segundos.
+
+    Raises:
+        RuntimeError: se AWS_S3_BUCKET não configurado.
+    """
+    if not _BUCKET:
+        raise RuntimeError("AWS_S3_BUCKET não configurado — configure no .env")
+
+    key = f"temp-search/{uuid.uuid4()}.jpg"
+    client = _get_client()
+
+    client.put_object(
+        Bucket=_BUCKET,
+        Key=key,
+        Body=image_bytes,
+        ContentType="image/jpeg",
+    )
+
+    url = client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": _BUCKET, "Key": key},
+        ExpiresIn=_EXPIRATION_SECONDS,
+    )
+
+    return url, key
+
+
+def delete_object(key: str) -> None:
+    """Remove objeto do bucket S3 após o uso."""
+    client = _get_client()
+    client.delete_object(Bucket=_BUCKET, Key=key)
 ```
 
 - [ ] **Step 4: Rodar os testes para confirmar aprovação**
 
 ```bash
-python3 -m pytest tests/test_search.py::TestImgbbClient -v
+python3 -m pytest tests/test_search.py::TestS3TempClient -v
 ```
 Esperado: 3 PASSED
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/search/imgbb_client.py tests/test_search.py
-git commit -m "feat(search): adicionar cliente ImgBB para hosting temporário de imagem"
+git add src/search/s3_temp_client.py tests/test_search.py
+git commit -m "feat(search): adicionar cliente S3 temporário para presigned URL"
 ```
 
 ---
@@ -187,7 +217,7 @@ SerpAPI endpoint: `GET https://serpapi.com/search` com parâmetros:
 - `image_url=<url>`
 - `api_key=<key>`
 
-Resposta relevante: `image_results` (lista de páginas com a imagem) e `inline_images` (imagens visualmente similares).
+Resposta relevante: `image_results` (lista de páginas com a imagem).
 
 Cada `image_result`:
 ```json
@@ -236,7 +266,7 @@ class TestSerpapiClient:
             patch("httpx.AsyncClient") as mock_cls,
         ):
             mock_cls.return_value.__aenter__.return_value.get.return_value = mock_response
-            result = await search_by_image_url("https://i.ibb.co/abc/photo.jpg")
+            result = await search_by_image_url("https://s3.amazonaws.com/bucket/key?sig=abc")
 
         assert result["status"] == "found"
         assert len(result["results"]) == 2
@@ -258,7 +288,7 @@ class TestSerpapiClient:
             patch("httpx.AsyncClient") as mock_cls,
         ):
             mock_cls.return_value.__aenter__.return_value.get.return_value = mock_response
-            result = await search_by_image_url("https://i.ibb.co/abc/photo.jpg")
+            result = await search_by_image_url("https://s3.amazonaws.com/bucket/key?sig=abc")
 
         assert result["status"] == "not_found"
         assert result["results"] == []
@@ -269,7 +299,7 @@ class TestSerpapiClient:
         from src.search.serpapi_client import search_by_image_url
 
         with patch("src.search.serpapi_client._API_KEY", ""):
-            result = await search_by_image_url("https://example.com/img.jpg")
+            result = await search_by_image_url("https://s3.amazonaws.com/bucket/key?sig=abc")
 
         assert result["status"] == "error"
         assert "SERPAPI_KEY" in result["message"]
@@ -288,7 +318,7 @@ Esperado: `ERROR` (módulo não existe ainda)
 """
 Cliente SerpAPI — busca reversa de imagem via Google Reverse Image Search.
 
-Recebe uma URL pública de imagem (obtida via ImgBB) e retorna lista de
+Recebe uma URL pública de imagem (presigned URL do S3) e retorna lista de
 páginas onde a imagem aparece, no mesmo formato dos outros clientes.
 
 Variável de ambiente: SERPAPI_KEY
@@ -318,7 +348,7 @@ async def search_by_image_url(image_url: str) -> dict:
     Busca páginas que contêm a imagem usando SerpAPI Google Reverse Image.
 
     Args:
-        image_url: URL pública da imagem (ex: obtida via ImgBB).
+        image_url: presigned URL do S3 (expira em 60s).
 
     Returns:
         dict com status, results e message (mesmo formato dos outros clientes).
@@ -392,33 +422,27 @@ git commit -m "feat(search): adicionar cliente SerpAPI para busca reversa comple
 
 **Files:**
 - Modify: `src/ui/app.py`
+- Modify: `src/search/aggregator.py`
 
 ### Contexto
 
-O `app.py` roda FaceCheck e Google Vision em paralelo via `ThreadPoolExecutor`, depois chama `aggregate()`. O SerpAPI precisa de dois passos sequenciais:
-1. Upload da imagem ao ImgBB (`upload_image` — síncrono, em thread)
-2. Busca no SerpAPI (`search_by_image_url` — assíncrono, em thread com `asyncio.run`)
+O `app.py` roda FaceCheck e Google Vision em paralelo via `ThreadPoolExecutor`. O SerpAPI precisa de dois passos sequenciais:
+1. Upload da imagem ao S3 + geração de presigned URL (`upload_and_get_url` — síncrono, em thread)
+2. Busca no SerpAPI usando a URL (`search_by_image_url` — assíncrono, com `asyncio.run`)
+3. Deleção do objeto S3 após a busca (`delete_object`)
 
 O SerpAPI só roda se `SERPAPI_KEY` estiver configurada. Se não estiver, é ignorado silenciosamente.
 
-O `aggregate()` atual aceita apenas dois argumentos (`facecheck_result`, `vision_result`). Ele precisa ser atualizado para aceitar múltiplas fontes via `*args` ou receber uma lista.
+O `aggregate()` atual aceita apenas dois argumentos — precisa ser atualizado para aceitar múltiplas fontes.
 
 ### Atualização necessária no `aggregate()`
 
 ```python
-# src/search/aggregator.py — assinatura atual:
+# Assinatura atual:
 def aggregate(facecheck_result: dict, vision_result: dict) -> dict:
-    all_items = []
-    all_items.extend(facecheck_result.get("results", []))
-    all_items.extend(vision_result.get("results", []))
-    ...
 
-# Nova assinatura (retrocompatível):
+# Nova assinatura (retrocompatível — caller existente passa 2 args, continua funcionando):
 def aggregate(*source_results: dict) -> dict:
-    all_items = []
-    for r in source_results:
-        all_items.extend(r.get("results", []))
-    ...
 ```
 
 - [ ] **Step 1: Escrever testes para aggregate com 3 fontes**
@@ -489,7 +513,6 @@ def aggregate(*source_results: dict) -> dict:
 
     total_raw = len(all_items)
 
-    # Deduplicar por page_url (primeira ocorrência vence)
     seen_page_urls: set[str] = set()
     deduplicated = []
     for item in all_items:
@@ -498,10 +521,8 @@ def aggregate(*source_results: dict) -> dict:
             seen_page_urls.add(page_url)
             deduplicated.append(item)
 
-    # Ordenar por confidence desc (None vai para o final)
     deduplicated.sort(key=_confidence_key)
 
-    # Extrair domínios únicos preservando ordem de aparição
     domains: list[str] = []
     seen_domains: set[str] = set()
     for item in deduplicated:
@@ -510,8 +531,7 @@ def aggregate(*source_results: dict) -> dict:
             seen_domains.add(d)
             domains.append(d)
 
-    # Usar apenas os dois primeiros para _compute_status/_collect_messages
-    # (compatibilidade com lógica de status FaceCheck vs Vision)
+    # Status determinado pelas duas primeiras fontes (FaceCheck + Vision)
     first = source_results[0] if source_results else {}
     second = source_results[1] if len(source_results) > 1 else {}
     status, requires_manual = _compute_status(first, second)
@@ -549,7 +569,7 @@ if source == "serpapi":
 return "Google Vision"
 ```
 
-Localizar em `src/ui/app.py`:
+Localizar o bloco de imports em `src/ui/app.py`:
 ```python
 from src.search.aggregator import aggregate, enrich_with_rekognition
 from src.search.facecheck_client import search_by_face
@@ -558,45 +578,62 @@ from src.search.orchestrator import search_image  # fallback
 from src.search.rekognition_client import _is_configured as _rekognition_configured
 ```
 
-Adicionar:
+Adicionar após:
 ```python
-from src.search.imgbb_client import upload_image as _imgbb_upload
+from src.search.s3_temp_client import delete_object as _s3_delete
+from src.search.s3_temp_client import upload_and_get_url as _s3_upload
+from src.search.s3_temp_client import _BUCKET as _s3_bucket
 from src.search.serpapi_client import search_by_image_url as _serpapi_search
-from src.search.serpapi_client import _API_KEY as _serpapi_configured
+from src.search.serpapi_client import _API_KEY as _serpapi_key
 ```
 
-Localizar o bloco de busca paralela e adicionar SerpAPI:
+Localizar o bloco de busca e adicionar antes do `ThreadPoolExecutor`:
 ```python
-# Após os placeholders de FaceCheck e Google Vision:
-ph_sp = st.empty()
-_serpapi_enabled = bool(_serpapi_configured)
-if _serpapi_enabled:
-    ph_sp.info("⏳ SerpAPI: aguardando...")
-
-# Inicializar sp_result antes do executor (assim como fc_result = _err e gv_result = _err)
+_serpapi_enabled = bool(_serpapi_key and _s3_bucket)
 sp_result = {"status": "not_found", "results": [], "requires_manual_review": False, "message": None}
 sp_shown = False
+```
 
+Adicionar placeholder no `st.status`:
+```python
+if _serpapi_enabled:
+    ph_sp = st.empty()
+    ph_sp.info("⏳ SerpAPI: aguardando...")
+```
+
+Adicionar função `_run_serpapi` antes do executor:
+```python
 def _run_serpapi():
     if not _serpapi_enabled:
-        return {"status": "not_found", "results": [], "requires_manual_review": False, "message": None}
+        return sp_result
+    s3_key = None
     try:
-        image_url = _imgbb_upload(uploaded_file.getvalue())
+        image_url, s3_key = _s3_upload(uploaded_file.getvalue())
         return _asyncio.run(_serpapi_search(image_url))
     except Exception as exc:
         return {"status": "error", "results": [], "requires_manual_review": True, "message": str(exc)}
+    finally:
+        if s3_key:
+            try:
+                _s3_delete(s3_key)
+            except Exception:
+                pass
+```
 
-# Adicionar ao ThreadPoolExecutor:
+Adicionar ao `ThreadPoolExecutor` e polling:
+```python
 sp_future = executor.submit(_run_serpapi)
 
-# No loop de polling, adicionar:
-if sp_future.done() and _serpapi_enabled and not sp_shown:
+# No loop de polling:
+if _serpapi_enabled and sp_future.done() and not sp_shown:
     sp_result = sp_future.result()
     n = len(sp_result.get("results", []))
     ph_sp.success(f"✅ SerpAPI: {n} resultado(s)")
     sp_shown = True
+```
 
-# Atualizar chamada ao aggregate:
+Atualizar a chamada ao `aggregate`:
+```python
 result = aggregate(fc_result, gv_result, sp_result)
 ```
 
@@ -628,16 +665,23 @@ git commit -m "feat(search): integrar SerpAPI como fonte complementar de busca r
 # Cadastro: https://serpapi.com → 100 buscas grátis/mês
 SERPAPI_KEY=...
 
-# ImgBB — hosting temporário de imagem para SerpAPI
-# Cadastro: https://imgbb.com → Account > API (gratuito)
-IMGBB_KEY=...
+# AWS S3 — bucket privado para presigned URL temporária (SerpAPI)
+# Criar bucket em: console.aws.amazon.com/s3 (manter Block all public access ativado)
+AWS_S3_BUCKET=poc-dossie-temp
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **Step 2: Adicionar os valores reais ao `.env` local**
+
+```bash
+SERPAPI_KEY=sua_chave_serpapi
+AWS_S3_BUCKET=nome-do-seu-bucket
+```
+
+- [ ] **Step 3: Commit**
 
 ```bash
 git add .env.example
-git commit -m "docs: documentar variáveis SERPAPI_KEY e IMGBB_KEY no .env.example"
+git commit -m "docs: documentar variáveis SERPAPI_KEY e AWS_S3_BUCKET no .env.example"
 ```
 
 ---
@@ -653,12 +697,12 @@ Esperado: todos os testes passando (sem regressão).
 
 ## Como testar manualmente
 
-1. Cadastre-se em [imgbb.com](https://imgbb.com) → Account > API → copie a chave
+1. Crie o bucket S3 (veja Pré-requisito acima)
 2. Cadastre-se em [serpapi.com](https://serpapi.com) → Dashboard → copie a API key (100 buscas grátis)
-3. Adicione ao `.env` (não só ao `.env.example`):
+3. Adicione ao `.env`:
    ```
-   IMGBB_KEY=sua_chave_imgbb
-   SERPAPI_KEY=sua_chave_serpapi
+   SERPAPI_KEY=sua_chave
+   AWS_S3_BUCKET=nome-do-seu-bucket
    ```
 4. Reinicie o app: `DYLD_LIBRARY_PATH=/opt/homebrew/lib streamlit run src/ui/app.py`
 5. Faça uma busca — deve aparecer "✅ SerpAPI: N resultado(s)" na tela de progresso
