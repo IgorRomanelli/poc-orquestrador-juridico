@@ -48,7 +48,8 @@ def _build_address(*parts) -> str | None:
     return joined or None
 
 
-def _not_found_result(cnpj_raw: str, message: str) -> dict:
+def _build_empty_result(cnpj_raw: str, status: str, message: str) -> dict:
+    """Schema base para resultados sem dados (not_found ou error)."""
     return {
         "cnpj": cnpj_raw,
         "razao_social": None,
@@ -64,32 +65,18 @@ def _not_found_result(cnpj_raw: str, message: str) -> dict:
         "natureza_juridica": None,
         "capital_social": None,
         "fonte": None,
-        "status": "not_found",
+        "status": status,
         "requires_manual_review": True,
         "message": message,
     }
+
+
+def _not_found_result(cnpj_raw: str, message: str) -> dict:
+    return _build_empty_result(cnpj_raw, "not_found", message)
 
 
 def _error_result(cnpj_raw: str, message: str) -> dict:
-    return {
-        "cnpj": cnpj_raw,
-        "razao_social": None,
-        "nome_fantasia": None,
-        "situacao": None,
-        "atividade_principal": None,
-        "logradouro": None,
-        "socios": [],
-        "telefone": None,
-        "email": None,
-        "cep": None,
-        "bairro": None,
-        "natureza_juridica": None,
-        "capital_social": None,
-        "fonte": None,
-        "status": "error",
-        "requires_manual_review": True,
-        "message": message,
-    }
+    return _build_empty_result(cnpj_raw, "error", message)
 
 
 # ─── clientes internos ────────────────────────────────────────────────────────
