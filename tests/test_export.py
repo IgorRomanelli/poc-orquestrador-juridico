@@ -380,3 +380,55 @@ class TestDossieGeneratorGoogleMaps:
         md = generate(client_name="C", violations=[item], investigate=[], date="2026-03-18")
         # No Maps link when address is unknown
         assert "maps.google.com" not in md and "google.com/maps" not in md
+
+
+# ─── TestThumbnailFormatting ───────────────────────────────────────────────────
+
+class TestThumbnailFormatting:
+
+    def test_thumbnail_preserves_list_formatting(self):
+        """Quando preview_thumbnail está presente, os campos do dossiê devem continuar
+        renderizando como lista (<li>), não como parágrafo simples."""
+        from src.export.pdf_exporter import _to_html
+
+        item = _make_full_item()
+        item["search_result"]["preview_thumbnail"] = (
+            "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwME"
+        )
+        md = generate(client_name="C", violations=[item], investigate=[], date="2026-03-18")
+        html = _to_html(md)
+
+        assert "<li>" in html, "Campos devem renderizar como itens de lista (<li>)"
+
+
+# ─── TestPdfIdentidadeVisual ───────────────────────────────────────────────────
+
+class TestPdfIdentidadeVisual:
+
+    def test_doc_header_img_has_no_border(self):
+        """Logo no cabeçalho não deve ter borda (border: none explícito no seletor .doc-header img)."""
+        from src.export.pdf_exporter import _CSS
+        # O seletor .doc-header img deve aparecer antes de border: none
+        header_img_pos = _CSS.find(".doc-header img")
+        border_none_after = _CSS.find("border: none", header_img_pos)
+        assert header_img_pos != -1, ".doc-header img não encontrado no CSS"
+        assert border_none_after != -1, ".doc-header img deve ter border: none explícito"
+
+    def test_doc_header_is_centered(self):
+        """Cabeçalho do documento deve ser centralizado."""
+        from src.export.pdf_exporter import _CSS
+        # text-align: center no .doc-header
+        assert "text-align: center" in _CSS, ".doc-header deve ter text-align: center"
+
+    def test_metadata_renders_on_separate_lines(self):
+        """Cliente, Data e Gerado por devem aparecer em linhas separadas no HTML."""
+        from src.export.pdf_exporter import _to_html
+        md = generate(
+            client_name="Cliente Teste",
+            violations=[],
+            investigate=[],
+            date="2026-03-18",
+        )
+        html = _to_html(md)
+        # Com dois espaços + \n no markdown, o parser gera <br> entre os campos
+        assert "<br" in html, "Metadados devem ser separados por <br> para ficarem em linhas distintas"

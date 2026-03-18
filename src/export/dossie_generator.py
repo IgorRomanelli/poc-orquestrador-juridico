@@ -124,8 +124,8 @@ def _render_item(index: int, item: dict, label: str = "Violação") -> str:
 
     thumbnail = search.get("preview_thumbnail") or ""
     image_block = (
-        f'\n<img src="{thumbnail}" style="max-width:240px;max-height:240px;'
-        f'border:1px solid #ccc;margin:6px 0;display:block;">\n'
+        f'\n\n<img src="{thumbnail}" style="max-width:240px;max-height:240px;'
+        f'border:1px solid #ccc;margin:6px 0;display:block;">\n\n'
         if thumbnail.startswith("data:")
         else ""
     )
@@ -187,9 +187,7 @@ def generate(
 
     sections = [
         "# Dossiê de Violação de Imagem",
-        f"**Cliente:** {client_name}",
-        f"**Data:** {date}",
-        "**Gerado por:** Sistema de Busca de Imagem",
+        f"**Cliente:** {client_name}  \n**Data:** {date}  \n**Gerado por:** Sistema de Busca de Imagem",
         "",
         "---",
         "",

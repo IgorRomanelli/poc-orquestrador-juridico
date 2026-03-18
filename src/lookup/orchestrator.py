@@ -15,7 +15,13 @@ import asyncio
 
 from .cnpj_client import extract_cnpj_from_text, lookup_cnpj
 from .jucesp_client import lookup_jucesp
-from .whois_client import lookup_whois
+from .rdap_client import lookup_rdap
+from .whois_client import _is_privacy_proxy, lookup_whois
+
+
+def _is_br_domain(domain: str) -> bool:
+    """Retorna True se o domínio é .br (registrado no Registro.br)."""
+    return domain.strip().lower().endswith(".br")
 
 
 # ─── helpers privados ──────────────────────────────────────────────────────────
@@ -78,6 +84,18 @@ async def lookup_domain(domain: str) -> dict:
     """
     # Passo 1: WHOIS (sequencial — resultado alimenta CNPJ)
     whois_result = await lookup_whois(domain)
+
+    # Passo 1b: RDAP como complemento para domínios .com/.net com privacy proxy
+    if not _is_br_domain(domain) and _is_privacy_proxy(whois_result.get("registrant")):
+        rdap = await asyncio.to_thread(lookup_rdap, domain)
+        if rdap.get("status") == "found":
+            whois_result["registrant_rdap"] = rdap.get("registrant", "")
+            whois_result["registrar_rdap"] = rdap.get("registrar", "")
+            whois_result["privacy_proxy"] = True
+            if not whois_result.get("creation_date"):
+                whois_result["creation_date"] = rdap.get("created")
+            if not whois_result.get("expiration_date"):
+                whois_result["expiration_date"] = rdap.get("expiration_date")
 
     # Extrair CNPJ: prioriza campo owner-id do Registro.br, fallback para regex no texto
     registrant = whois_result.get("registrant")

@@ -50,14 +50,17 @@ body {
 }
 
 .doc-header {
-    text-align: left;
-    margin-bottom: 1.2em;
-    padding-bottom: 0.8em;
+    text-align: center;
+    margin-bottom: 1.5em;
+    padding-bottom: 1em;
     border-bottom: 2px solid #C00000;
 }
 
 .doc-header img {
-    height: 52px;
+    height: 80px;
+    border: none;
+    margin: 0 auto;
+    display: block;
 }
 
 h1 {

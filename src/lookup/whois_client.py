@@ -22,6 +22,30 @@ _CONTACT_BLOCK_RE = re.compile(
 )
 
 
+# ─── privacy proxy detection ───────────────────────────────────────────────────
+
+_PRIVACY_PROXIES: frozenset[str] = frozenset({
+    "domains by proxy",
+    "whoisguard",
+    "privacyprotect",
+    "perfect privacy",
+    "contact privacy",
+    "privacy protect",
+    "registrant privacy",
+    "withheld for privacy",
+    "data protected",
+    "redacted for privacy",
+})
+
+
+def _is_privacy_proxy(registrant: str | None) -> bool:
+    """Retorna True se o registrant é um serviço de privacidade/proxy."""
+    if not registrant:
+        return False
+    lower = registrant.lower()
+    return any(proxy in lower for proxy in _PRIVACY_PROXIES)
+
+
 # ─── helpers privados ──────────────────────────────────────────────────────────
 
 def _normalize_date(value) -> str | None:
