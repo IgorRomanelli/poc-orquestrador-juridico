@@ -1,0 +1,10 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "poc-orquestrador"
+version = "0.1.0"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
