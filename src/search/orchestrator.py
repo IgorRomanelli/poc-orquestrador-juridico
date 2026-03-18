@@ -14,9 +14,10 @@ Status global: "found" | "partial" | "not_found" | "error"
 import asyncio
 import time
 
-from .aggregator import aggregate
+from .aggregator import aggregate, enrich_with_rekognition
 from .facecheck_client import search_by_face
 from .google_vision_client import search_by_image
+from .rekognition_client import _is_configured as _rekognition_configured
 
 
 # ─── helpers privados ──────────────────────────────────────────────────────────
@@ -56,6 +57,16 @@ async def search_image(image_path: str) -> dict:
         vision_result = _exception_to_error(vision_result, "GoogleVision")
 
     result = aggregate(facecheck_result, vision_result)
+
+    # Enriquecer com Rekognition se credenciais configuradas
+    if _rekognition_configured and result.get("results"):
+        try:
+            with open(image_path, "rb") as f:
+                source_bytes = f.read()
+            result["results"] = await enrich_with_rekognition(result["results"], source_bytes)
+        except Exception:
+            pass  # Rekognition é opcional — nunca bloqueia o fluxo principal
+
     result["search_time_seconds"] = round(time.monotonic() - start, 2)
 
     return result

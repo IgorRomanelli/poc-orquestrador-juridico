@@ -8,7 +8,16 @@ Regra de deduplicação: por page_url exato.
 Quando o mesmo domínio aparece nas duas APIs com page_urls distintos, ambos são mantidos.
 """
 
+import asyncio
+import base64
+
+import httpx
+
 from urllib.parse import urlparse
+
+from .rekognition_client import compare_faces
+
+_DOWNLOAD_TIMEOUT = 5.0
 
 
 # ─── helpers privados ──────────────────────────────────────────────────────────
@@ -120,3 +129,52 @@ def aggregate(facecheck_result: dict, vision_result: dict) -> dict:
         "requires_manual_review": requires_manual,
         "message": message,
     }
+
+
+# ─── enriquecimento Rekognition ────────────────────────────────────────────────
+
+
+def _get_target_bytes(item: dict) -> bytes | None:
+    """Obtém bytes da imagem-alvo: base64 thumbnail ou download via image_url."""
+    thumbnail = item.get("preview_thumbnail") or ""
+    if thumbnail.startswith("data:") and ";base64," in thumbnail:
+        try:
+            b64_part = thumbnail.split(";base64,", 1)[1]
+            return base64.b64decode(b64_part)
+        except Exception:
+            return None
+
+    image_url = item.get("image_url")
+    if image_url:
+        try:
+            response = httpx.get(image_url, timeout=_DOWNLOAD_TIMEOUT, follow_redirects=True)
+            if response.status_code == 200:
+                return response.content
+        except Exception:
+            pass
+
+    return None
+
+
+async def enrich_with_rekognition(items: list[dict], source_image_bytes: bytes) -> list[dict]:
+    """
+    Enriquece cada item com confidence_rekognition via Amazon Rekognition CompareFaces.
+
+    Args:
+        items: lista de resultados agregados.
+        source_image_bytes: bytes da foto original do cliente.
+
+    Returns:
+        A mesma lista com confidence_rekognition adicionado onde possível.
+        Itens sem imagem acessível ou com erro ficam com confidence_rekognition=None.
+    """
+    for item in items:
+        target_bytes = await asyncio.to_thread(_get_target_bytes, item)
+        if target_bytes is None:
+            item["confidence_rekognition"] = None
+            continue
+
+        result = await asyncio.to_thread(compare_faces, source_image_bytes, target_bytes)
+        item["confidence_rekognition"] = result.get("similarity")
+
+    return items
