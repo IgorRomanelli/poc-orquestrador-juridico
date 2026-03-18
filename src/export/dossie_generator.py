@@ -53,11 +53,16 @@ def _format_whois_dates(whois: dict) -> str:
 def _format_confidence(item: dict) -> str:
     conf = item.get("confidence")
     source = item.get("source", "")
-    if conf is None:
-        return _PLACEHOLDER
-    pct = f"{int(conf * 100)}%"
-    label = "FaceCheck" if source == "facecheck" else "Google Vision"
-    return f"{pct} ({label})"
+    reko = item.get("confidence_rekognition")
+
+    parts = []
+    if conf is not None:
+        label = "FaceCheck" if source == "facecheck" else "Google Vision"
+        parts.append(f"{int(conf * 100)}% ({label})")
+    if reko is not None:
+        parts.append(f"{int(reko * 100)}% (Rekognition)")
+
+    return " | ".join(parts) if parts else _PLACEHOLDER
 
 
 def _maps_url(logradouro: str, municipio: str, uf: str, cep: str) -> str:

@@ -84,9 +84,13 @@ def _run_async(coro):
 
 def _confidence_label(item: dict) -> str:
     conf = item.get("confidence")
-    if conf is None:
-        return "—"
-    return f"{int(conf * 100)}%"
+    reko = item.get("confidence_rekognition")
+
+    if conf is not None:
+        return f"{int(conf * 100)}% (FaceCheck)"
+    if reko is not None:
+        return f"{int(reko * 100)}% (Rekognition)"
+    return "—"
 
 
 def _source_label(item: dict) -> str:
