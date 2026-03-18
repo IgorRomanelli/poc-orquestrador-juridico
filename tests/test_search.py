@@ -560,7 +560,10 @@ class TestRekognitionEnrichment:
         items = [self._make_item(source="facecheck", thumbnail=fake_thumbnail)]
         mock_compare = {"status": "found", "similarity": 0.92, "message": None}
 
-        with patch("src.search.aggregator.compare_faces", return_value=mock_compare):
+        with (
+            patch("src.search.aggregator._to_jpeg", side_effect=lambda b: b),
+            patch("src.search.aggregator.compare_faces", return_value=mock_compare),
+        ):
             enriched = await enrich_with_rekognition(items, source_image_bytes=b"source")
 
         assert enriched[0].get("confidence_rekognition") == 0.92
@@ -578,6 +581,7 @@ class TestRekognitionEnrichment:
 
         with (
             patch("httpx.get", return_value=mock_response),
+            patch("src.search.aggregator._to_jpeg", side_effect=lambda b: b),
             patch("src.search.aggregator.compare_faces", return_value=mock_compare),
         ):
             enriched = await enrich_with_rekognition(items, source_image_bytes=b"source")
@@ -613,7 +617,10 @@ class TestRekognitionEnrichment:
                 return {"status": "error", "similarity": None, "message": "timeout"}
             return {"status": "found", "similarity": 0.75, "message": None}
 
-        with patch("src.search.aggregator.compare_faces", side_effect=mock_compare):
+        with (
+            patch("src.search.aggregator._to_jpeg", side_effect=lambda b: b),
+            patch("src.search.aggregator.compare_faces", side_effect=mock_compare),
+        ):
             enriched = await enrich_with_rekognition(items, source_image_bytes=b"source")
 
         assert enriched[0].get("confidence_rekognition") is None

@@ -30,10 +30,11 @@ load_dotenv()
 from src.export.dossie_generator import generate as generate_dossie
 from src.export.pdf_exporter import to_bytes as pdf_to_bytes
 from src.lookup.orchestrator import lookup_domain
-from src.search.aggregator import aggregate
+from src.search.aggregator import aggregate, enrich_with_rekognition
 from src.search.facecheck_client import search_by_face
 from src.search.google_vision_client import search_by_image
 from src.search.orchestrator import search_image  # fallback
+from src.search.rekognition_client import _is_configured as _rekognition_configured
 
 _SOCIAL_DOMAINS = frozenset({
     "instagram.com", "facebook.com", "twitter.com", "x.com",
@@ -183,7 +184,7 @@ if uploaded_file:
     with col_img:
         st.image(uploaded_file, width=160, caption="Foto carregada")
     with col_btn:
-        if st.button("Buscar ocorrências", type="primary", use_container_width=False):
+        if st.button("Buscar ocorrências", type="primary", width="content"):
             suffix = os.path.splitext(uploaded_file.name)[-1] or ".jpg"
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                 tmp.write(uploaded_file.getvalue())
@@ -245,6 +246,22 @@ if uploaded_file:
                             ph_gv.success(f"✅ Google Vision: {n} resultado(s)")
 
                     result = aggregate(fc_result, gv_result)
+
+                    if _rekognition_configured and result.get("results"):
+                        try:
+                            import io
+                            from PIL import Image as _PILImage
+                            _raw = uploaded_file.getvalue()
+                            _img = _PILImage.open(io.BytesIO(_raw)).convert("RGB")
+                            _buf = io.BytesIO()
+                            _img.save(_buf, format="JPEG", quality=90)
+                            source_bytes = _buf.getvalue()
+                            result["results"] = _asyncio.run(
+                                enrich_with_rekognition(result["results"], source_bytes)
+                            )
+                        except Exception as _exc:
+                            print(f"[REKO] enriquecimento falhou: {_exc}")
+
                     total = result.get("total_deduplicated", 0)
                     search_status.update(
                         label=f"✅ {total} resultado(s) encontrado(s)",
@@ -362,7 +379,7 @@ if "search_result" in st.session_state:
                 img_url = item.get("image_url", "")
                 if img_url:
                     try:
-                        st.image(img_url, width=110, use_container_width=False)
+                        st.image(img_url, width=110)
                     except Exception:
                         st.caption("🖼️")
                 else:
@@ -383,7 +400,7 @@ if "search_result" in st.session_state:
                         "✅ Violação",
                         key=f"v_{url}",
                         type="primary" if active else "secondary",
-                        use_container_width=True,
+                        width="stretch",
                     ):
                         _classify(url, "violacao")
                         st.rerun()
@@ -393,7 +410,7 @@ if "search_result" in st.session_state:
                         "❌ Não é",
                         key=f"n_{url}",
                         type="primary" if active else "secondary",
-                        use_container_width=True,
+                        width="stretch",
                     ):
                         _classify(url, "nao_violacao")
                         st.rerun()
@@ -403,7 +420,7 @@ if "search_result" in st.session_state:
                         "🔍 Investigar",
                         key=f"i_{url}",
                         type="primary" if active else "secondary",
-                        use_container_width=True,
+                        width="stretch",
                     ):
                         _classify(url, "investigar")
                         st.rerun()

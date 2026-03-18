@@ -134,13 +134,24 @@ def aggregate(facecheck_result: dict, vision_result: dict) -> dict:
 # ─── enriquecimento Rekognition ────────────────────────────────────────────────
 
 
+def _to_jpeg(raw_bytes: bytes) -> bytes:
+    """Converte bytes de imagem para JPEG (Rekognition exige JPEG ou PNG)."""
+    import io
+    from PIL import Image
+    img = Image.open(io.BytesIO(raw_bytes)).convert("RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=90)
+    return buf.getvalue()
+
+
 def _get_target_bytes(item: dict) -> bytes | None:
-    """Obtém bytes da imagem-alvo: base64 thumbnail ou download via image_url."""
+    """Obtém bytes da imagem-alvo em JPEG: base64 thumbnail ou download via image_url."""
     thumbnail = item.get("preview_thumbnail") or ""
     if thumbnail.startswith("data:") and ";base64," in thumbnail:
         try:
             b64_part = thumbnail.split(";base64,", 1)[1]
-            return base64.b64decode(b64_part)
+            raw = base64.b64decode(b64_part)
+            return _to_jpeg(raw)
         except Exception:
             return None
 
@@ -149,7 +160,7 @@ def _get_target_bytes(item: dict) -> bytes | None:
         try:
             response = httpx.get(image_url, timeout=_DOWNLOAD_TIMEOUT, follow_redirects=True)
             if response.status_code == 200:
-                return response.content
+                return _to_jpeg(response.content)
         except Exception:
             pass
 
