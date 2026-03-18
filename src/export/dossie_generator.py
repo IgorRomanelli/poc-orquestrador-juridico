@@ -8,6 +8,7 @@ Campos ausentes são sempre exibidos como "— não identificado" (nunca omitido
 """
 
 from datetime import date as _date
+from urllib.parse import quote_plus
 
 
 # ─── helpers privados ──────────────────────────────────────────────────────────
@@ -59,6 +60,21 @@ def _format_confidence(item: dict) -> str:
     return f"{pct} ({label})"
 
 
+def _maps_url(logradouro: str, municipio: str, uf: str, cep: str) -> str:
+    """Retorna URL do Google Maps para o endereço, ou string vazia se desconhecido."""
+    if logradouro == _PLACEHOLDER:
+        return ""
+    parts = [logradouro]
+    if municipio:
+        parts.append(municipio)
+    if uf:
+        parts.append(uf)
+    if cep != _PLACEHOLDER:
+        parts.append(cep)
+    query = ", ".join(parts)
+    return f"https://maps.google.com/?q={quote_plus(query)}"
+
+
 def _as_dict(value) -> dict:
     """Garante que o valor é um dict; retorna {} caso contrário."""
     return value if isinstance(value, dict) else {}
@@ -98,6 +114,9 @@ def _render_item(index: int, item: dict, label: str = "Violação") -> str:
     if cep != _PLACEHOLDER and municipio:
         endereco = f"{endereco} — CEP {cep}"
 
+    maps_url = _maps_url(logradouro, municipio, uf, cep)
+    maps_link = f"[Ver no Google Maps]({maps_url})" if maps_url else _PLACEHOLDER
+
     whois_dates = _format_whois_dates(whois)
     registrant = _v(whois.get("registrant"))
     jucesp_url = _v(jucesp.get("jucesp_search_url"))
@@ -125,6 +144,7 @@ def _render_item(index: int, item: dict, label: str = "Violação") -> str:
         f"- **Responsável:** {socios}\n"
         f"- **Situação:** {situacao}\n"
         f"- **Endereço:** {endereco}\n"
+        f"- **Mapa:** {maps_link}\n"
         f"- **Telefone:** {telefone}\n"
         f"- **E-mail:** {email}\n"
         f"- **WHOIS:** {whois_dates}\n"

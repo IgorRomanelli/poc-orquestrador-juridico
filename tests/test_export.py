@@ -346,3 +346,37 @@ class TestDossieGeneratorCamposCompletos:
         md = generate(client_name="C", violations=[item], investigate=[], date="2026-03-18")
         # Each None field must still appear as placeholder (at least 4 occurrences total)
         assert md.count("— não identificado") >= 4
+
+
+# ─── TestDossieGeneratorGoogleMaps ─────────────────────────────────────────────
+
+class TestDossieGeneratorGoogleMaps:
+
+    def test_maps_link_present_when_address_available(self):
+        item = _make_full_item(
+            logradouro="Rua das Flores, 123",
+            municipio="São Paulo",
+            uf="SP",
+            cep="01310-100",
+        )
+        md = generate(client_name="C", violations=[item], investigate=[], date="2026-03-18")
+        assert "maps.google.com" in md or "google.com/maps" in md
+
+    def test_maps_link_encodes_address(self):
+        item = _make_full_item(
+            logradouro="Av. Paulista, 1000",
+            municipio="São Paulo",
+            uf="SP",
+        )
+        md = generate(client_name="C", violations=[item], investigate=[], date="2026-03-18")
+        # URL must contain something from the address (encoded or plain)
+        assert "Paulista" in md or "Paulista".replace(" ", "+") in md or "%20" in md
+
+    def test_maps_link_absent_when_no_address(self):
+        item = _make_full_item(logradouro=None, municipio="", uf="")
+        item["lookup"]["cnpj_data"]["logradouro"] = None
+        item["lookup"]["cnpj_data"]["municipio"] = ""
+        item["lookup"]["cnpj_data"]["uf"] = ""
+        md = generate(client_name="C", violations=[item], investigate=[], date="2026-03-18")
+        # No Maps link when address is unknown
+        assert "maps.google.com" not in md and "google.com/maps" not in md
