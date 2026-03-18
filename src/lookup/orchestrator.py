@@ -105,8 +105,7 @@ async def lookup_domain(domain: str) -> dict:
 
     # Atualizar JUCESP com razão social do CNPJ se encontrado
     if cnpj_result.get("razao_social") and jucesp_result.get("status") == "manual_required":
-        from .jucesp_client import lookup_jucesp as _jucesp
-        jucesp_result = await _jucesp(cnpj_result["razao_social"], cnpj_result.get("cnpj"))
+        jucesp_result = await lookup_jucesp(cnpj_result["razao_social"], cnpj_result.get("cnpj"))
 
     global_status = _compute_global_status(whois_result, cnpj_result)
     requires_manual = any(
@@ -126,7 +125,10 @@ async def lookup_domain(domain: str) -> dict:
 
 
 async def _no_cnpj_result(domain: str) -> dict:
-    """Resultado padrão quando nenhum CNPJ é extraído do WHOIS."""
+    """
+    Resultado padrão quando nenhum CNPJ é extraído do WHOIS.
+    Declarada async para compatibilidade com asyncio.gather em lookup_domain — sem I/O.
+    """
     return {
         "cnpj": None,
         "razao_social": None,
