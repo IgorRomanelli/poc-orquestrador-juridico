@@ -224,7 +224,17 @@ if "search_result" in st.session_state:
                 unsafe_allow_html=True,
             )
 
-            col_info, col_btns = st.columns([3, 2])
+            col_thumb, col_info, col_btns = st.columns([1, 2.5, 2])
+
+            with col_thumb:
+                img_url = item.get("image_url", "")
+                if img_url:
+                    try:
+                        st.image(img_url, width=110, use_container_width=False)
+                    except Exception:
+                        st.caption("🖼️")
+                else:
+                    st.caption("—")
 
             with col_info:
                 st.markdown(f"**Domínio:** {domain}")
