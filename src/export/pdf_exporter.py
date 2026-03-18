@@ -53,7 +53,7 @@ body {
     text-align: center;
     margin-bottom: 1.5em;
     padding-bottom: 1em;
-    border-bottom: 2px solid #C00000;
+    border-bottom: 2px solid #EA3323;
 }
 
 .doc-header img {
@@ -65,7 +65,7 @@ body {
 
 h1 {
     font-size: 17pt;
-    color: #C00000;
+    color: #EA3323;
     margin-bottom: 0.2em;
     margin-top: 0.6em;
 }
@@ -83,7 +83,7 @@ h2 {
 
 h3 {
     font-size: 11pt;
-    color: #C00000;
+    color: #EA3323;
     margin-top: 1.2em;
     margin-bottom: 0.3em;
 }

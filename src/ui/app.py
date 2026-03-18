@@ -309,13 +309,6 @@ if "search_result" in st.session_state:
         r for r in results
         if _passes_filter(r, filter_sources, conf_min, conf_max, include_no_conf, hide_social)
     ]
-    filtered_results = sorted(
-        filtered_results,
-        key=lambda r: (
-            _CLASSIF_PRIORITY.get(classifs.get(r.get("page_url", ""), "pendente"), 0),
-            _site_priority(r),
-        ),
-    )
 
     st.subheader(f"Resultados ({len(filtered_results)} exibidos de {len(results)})")
     st.caption(
@@ -325,6 +318,14 @@ if "search_result" in st.session_state:
 
     # Contador de classificações (sobre TODOS os resultados, não só os filtrados)
     classifs = st.session_state.classifications
+
+    filtered_results = sorted(
+        filtered_results,
+        key=lambda r: (
+            _CLASSIF_PRIORITY.get(classifs.get(r.get("page_url", ""), "pendente"), 0),
+            _site_priority(r),
+        ),
+    )
     n_violacao = sum(1 for v in classifs.values() if v == "violacao")
     n_investigar = sum(1 for v in classifs.values() if v == "investigar")
     st.info(
@@ -488,4 +489,4 @@ if "search_result" in st.session_state:
                     )
 
                     with st.expander("Pré-visualizar markdown do dossiê"):
-                        st.markdown(markdown_text)
+                        st.markdown(markdown_text, unsafe_allow_html=True)

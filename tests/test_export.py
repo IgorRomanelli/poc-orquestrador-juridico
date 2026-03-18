@@ -238,7 +238,7 @@ class TestPdfExporterIdentidade:
     def test_html_contains_brand_colors(self):
         """CSS deve usar as cores da marca Goulart|Law."""
         from src.export.pdf_exporter import _CSS
-        assert "#C00000" in _CSS, "Vermelho primário ausente"
+        assert "#EA3323" in _CSS, "Vermelho primário ausente"
         assert "#1A3566" in _CSS, "Azul primário ausente"
 
     def test_html_contains_footer_text(self):
