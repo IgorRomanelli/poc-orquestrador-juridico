@@ -64,7 +64,7 @@ def _as_dict(value) -> dict:
     return value if isinstance(value, dict) else {}
 
 
-def _render_item(index: int, item: dict) -> str:
+def _render_item(index: int, item: dict, label: str = "Violação") -> str:
     """Renderiza um item (violação ou investigação) como bloco markdown."""
     search = _as_dict(item.get("search_result") if isinstance(item, dict) else None)
     lookup = _as_dict(item.get("lookup") if isinstance(item, dict) else None)
@@ -100,7 +100,7 @@ def _render_item(index: int, item: dict) -> str:
     )
 
     return (
-        f"### Violação {index}\n"
+        f"### {label} {index}\n"
         f"{image_block}"
         f"- **URL:** {page_url}\n"
         f"- **Domínio:** {domain}\n"
@@ -118,8 +118,7 @@ def _render_item(index: int, item: dict) -> str:
 
 def _render_investigate_item(index: int, item: dict) -> str:
     """Mesmo formato mas com cabeçalho 'Investigação'."""
-    rendered = _render_item(index, item)
-    return rendered.replace(f"### Violação {index}", f"### Investigação {index}", 1)
+    return _render_item(index, item, label="Investigação")
 
 
 # ─── função pública ────────────────────────────────────────────────────────────

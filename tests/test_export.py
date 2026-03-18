@@ -13,11 +13,6 @@ Cobertura:
         - test_markdown_content_reflected
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 import pytest
 
 from src.export.dossie_generator import generate
@@ -143,6 +138,24 @@ class TestDossieGenerator:
         # Seção de violações vem antes de investigação
         assert violations_pos < investigate_pos
 
+    def test_investigate_item_header_when_razao_social_contains_violacao(self):
+        """_render_investigate_item não deve corromper dados que contêm 'Violação'."""
+        item = _make_item(
+            razao_social="Empresa Violação 1 Ltda",  # dado contém "Violação 1"
+            page_url="https://investigate.com/page",
+            domain="investigate.com",
+        )
+        md = generate(
+            client_name="Cliente",
+            violations=[],
+            investigate=[item],
+            date="2026-03-18",
+        )
+        # O cabeçalho do bloco deve ser "Investigação 1", não "### Violação 1"
+        assert "### Investigação 1" in md
+        # A razão social não deve ter sido modificada
+        assert "Empresa Violação 1 Ltda" in md
+
     def test_no_violations_generates_empty_section(self):
         md = generate(
             client_name="Cliente",
@@ -178,6 +191,22 @@ class TestPdfExporter:
 
         assert isinstance(result, bytes)
         assert len(result) > 0
+        assert result[:4] == b"%PDF", "Resultado não é um PDF válido"
+
+    def test_to_bytes_raises_runtime_error_with_message_on_failure(self):
+        """Falha do WeasyPrint deve virar RuntimeError com mensagem amigável."""
+        import sys
+        from unittest.mock import MagicMock, patch
+        from src.export.pdf_exporter import to_bytes
+
+        mock_html_class = MagicMock()
+        mock_html_class.return_value.write_pdf.side_effect = Exception("cairo not found")
+        mock_weasyprint = MagicMock()
+        mock_weasyprint.HTML = mock_html_class
+
+        with patch.dict(sys.modules, {"weasyprint": mock_weasyprint}):
+            with pytest.raises(RuntimeError, match="Erro ao gerar PDF"):
+                to_bytes("# Teste")
 
     def test_markdown_content_reflected(self):
         """Verifica que o texto do markdown aparece no HTML intermediário (sem WeasyPrint)."""
