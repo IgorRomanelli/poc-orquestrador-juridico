@@ -36,20 +36,17 @@ def _confidence_key(item: dict):
     return (0, -c) if c is not None else (1, 0)
 
 
-def _compute_status(facecheck: dict, vision: dict) -> tuple[str, bool]:
+def _compute_status(*sources: dict) -> tuple[str, bool]:
     """
-    Computa status global e requires_manual_review.
+    Computa status global e requires_manual_review para N fontes.
 
     found    → pelo menos uma fonte encontrou resultados
     not_found → nenhuma fonte encontrou
     error    → pelo menos uma com erro E nenhuma com found
-    partial  → uma found, outra error
+    partial  → pelo menos uma found e pelo menos uma error
     """
-    fc_status = facecheck.get("status")
-    gv_status = vision.get("status")
-
-    any_found = fc_status == "found" or gv_status == "found"
-    any_error = fc_status == "error" or gv_status == "error"
+    any_found = any(s.get("status") == "found" for s in sources)
+    any_error = any(s.get("status") == "error" for s in sources)
 
     if any_found and any_error:
         status = "partial"
@@ -60,20 +57,12 @@ def _compute_status(facecheck: dict, vision: dict) -> tuple[str, bool]:
     else:
         status = "not_found"
 
-    requires_manual = any(
-        r.get("requires_manual_review")
-        for r in (facecheck, vision)
-    )
-
+    requires_manual = any(s.get("requires_manual_review") for s in sources)
     return status, requires_manual
 
 
-def _collect_messages(facecheck: dict, vision: dict) -> str | None:
-    messages = []
-    for r in (facecheck, vision):
-        msg = r.get("message")
-        if msg:
-            messages.append(msg)
+def _collect_messages(*sources: dict) -> str | None:
+    messages = [s.get("message") for s in sources if s.get("message")]
     return " | ".join(messages) if messages else None
 
 
@@ -117,11 +106,8 @@ def aggregate(*source_results: dict) -> dict:
             seen_domains.add(d)
             domains.append(d)
 
-    # Status determinado pelas duas primeiras fontes (FaceCheck + Vision)
-    first = source_results[0] if source_results else {}
-    second = source_results[1] if len(source_results) > 1 else {}
-    status, requires_manual = _compute_status(first, second)
-    message = _collect_messages(first, second)
+    status, requires_manual = _compute_status(*source_results)
+    message = _collect_messages(*source_results)
 
     return {
         "results": deduplicated,

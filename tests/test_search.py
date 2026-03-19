@@ -389,7 +389,7 @@ class TestAggregator:
         assert any(r["page_url"] == "https://c.com" for r in result["results"])
 
     def test_aggregate_three_sources_with_serpapi_error(self):
-        """Erro no SerpAPI não quebra o status quando outras fontes encontraram."""
+        """Erro em uma fonte retorna partial quando outras fontes encontraram."""
         from src.search.aggregator import aggregate
 
         fc = {"status": "found", "results": [{"page_url": "https://a.com", "domain": "a.com"}], "requires_manual_review": False, "message": None}
@@ -398,7 +398,7 @@ class TestAggregator:
 
         result = aggregate(fc, gv, sp)
 
-        assert result["status"] == "found"
+        assert result["status"] == "partial"
         assert result["total_raw"] == 2
 
 
