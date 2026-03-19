@@ -628,6 +628,60 @@ class TestRekognitionEnrichment:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Seção 1.6 — Cliente S3 temporário
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestS3TempClient:
+    def test_upload_returns_presigned_url(self):
+        """Upload bem-sucedido retorna URL presigned e key S3."""
+        from unittest.mock import MagicMock, patch
+        from src.search.s3_temp_client import upload_and_get_url
+
+        mock_s3 = MagicMock()
+        mock_s3.generate_presigned_url.return_value = "https://s3.amazonaws.com/bucket/key?X-Amz-Signature=abc"
+
+        with (
+            patch("src.search.s3_temp_client._BUCKET", "test-bucket"),
+            patch("src.search.s3_temp_client._get_client", return_value=mock_s3),
+        ):
+            url, key = upload_and_get_url(b"fake_image_bytes")
+
+        assert url.startswith("https://s3.amazonaws.com")
+        assert key.startswith("temp-search/")
+        assert key.endswith(".jpg")
+        mock_s3.put_object.assert_called_once()
+        mock_s3.generate_presigned_url.assert_called_once()
+
+    def test_delete_removes_object(self):
+        """delete_object remove o objeto do bucket."""
+        from unittest.mock import MagicMock, patch
+        from src.search.s3_temp_client import delete_object
+
+        mock_s3 = MagicMock()
+
+        with (
+            patch("src.search.s3_temp_client._BUCKET", "test-bucket"),
+            patch("src.search.s3_temp_client._get_client", return_value=mock_s3),
+        ):
+            delete_object("temp-search/abc.jpg")
+
+        mock_s3.delete_object.assert_called_once_with(
+            Bucket="test-bucket", Key="temp-search/abc.jpg"
+        )
+
+    def test_upload_raises_when_not_configured(self):
+        """Sem bucket configurado, levanta RuntimeError descritivo."""
+        from unittest.mock import patch
+        from src.search.s3_temp_client import upload_and_get_url
+        import pytest
+
+        with patch("src.search.s3_temp_client._BUCKET", ""):
+            with pytest.raises(RuntimeError, match="AWS_S3_BUCKET"):
+                upload_and_get_url(b"fake_image_bytes")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Seção 2 — Testes de integração com imagens reais (skipados por padrão)
 #
 # Como usar:
