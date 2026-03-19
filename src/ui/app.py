@@ -588,15 +588,18 @@ if "search_result" in st.session_state:
                         st.error(str(exc))
                         pdf_bytes = None
 
-                if pdf_bytes is not None:
-                    filename = f"dossie_{client_name.lower().replace(' ', '_')}_{today}.pdf"
+                    st.session_state["dossie_pdf"] = pdf_bytes
+                    st.session_state["dossie_markdown"] = markdown_text
+                    st.session_state["dossie_filename"] = f"dossie_{client_name.lower().replace(' ', '_')}_{today}.pdf"
+
+                if st.session_state.get("dossie_pdf") is not None:
                     st.download_button(
                         label="Baixar Dossiê PDF",
-                        data=pdf_bytes,
-                        file_name=filename,
+                        data=st.session_state["dossie_pdf"],
+                        file_name=st.session_state["dossie_filename"],
                         mime="application/pdf",
                         type="primary",
                     )
 
                     with st.expander("Pré-visualizar markdown do dossiê"):
-                        st.markdown(markdown_text, unsafe_allow_html=True)
+                        st.markdown(st.session_state["dossie_markdown"], unsafe_allow_html=True)
