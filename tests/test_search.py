@@ -826,3 +826,92 @@ async def test_real_image_search_h1_criterion():
     rate = len(success) / len(results)
     print(f"\nTaxa de sucesso H1: {rate:.0%} ({len(success)}/{len(results)})")
     assert rate >= 0.70, f"H1 não atingido: {rate:.0%} < 70%"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Seção 3 — Testes de helpers de UI (sem Streamlit)
+# ══════════════════════════════════════════════════════════════════════════════
+
+from src.ui.helpers import get_display_image_url, sort_results
+
+
+class TestGetDisplayImageUrl:
+    def test_prefers_preview_thumbnail(self):
+        item = {"preview_thumbnail": "http://thumb.jpg", "image_url": "http://full.jpg"}
+        assert get_display_image_url(item) == "http://thumb.jpg"
+
+    def test_falls_back_to_image_url(self):
+        item = {"preview_thumbnail": "", "image_url": "http://full.jpg"}
+        assert get_display_image_url(item) == "http://full.jpg"
+
+    def test_returns_empty_when_both_empty(self):
+        item = {"preview_thumbnail": "", "image_url": ""}
+        assert get_display_image_url(item) == ""
+
+    def test_handles_none_preview_thumbnail(self):
+        item = {"preview_thumbnail": None, "image_url": "http://full.jpg"}
+        assert get_display_image_url(item) == "http://full.jpg"
+
+
+class TestSortResults:
+    def _classifs(self, items, status="pendente"):
+        return {i["page_url"]: status for i in items}
+
+    def test_sorts_by_confidence_descending(self):
+        items = [
+            {"page_url": "a", "confidence": 0.5, "confidence_rekognition": None, "domain": "x.com"},
+            {"page_url": "b", "confidence": 0.9, "confidence_rekognition": None, "domain": "y.com"},
+            {"page_url": "c", "confidence": 0.7, "confidence_rekognition": None, "domain": "z.com"},
+        ]
+        sorted_items = sort_results(items, self._classifs(items))
+        assert [i["page_url"] for i in sorted_items] == ["b", "c", "a"]
+
+    def test_none_confidence_goes_last(self):
+        items = [
+            {"page_url": "a", "confidence": None, "confidence_rekognition": None, "domain": "x.com"},
+            {"page_url": "b", "confidence": 0.8, "confidence_rekognition": None, "domain": "y.com"},
+        ]
+        sorted_items = sort_results(items, self._classifs(items))
+        assert sorted_items[0]["page_url"] == "b"
+        assert sorted_items[1]["page_url"] == "a"
+
+    def test_uses_rekognition_confidence_when_no_facecheck(self):
+        items = [
+            {"page_url": "a", "confidence": None, "confidence_rekognition": 0.6, "domain": "x.com"},
+            {"page_url": "b", "confidence": None, "confidence_rekognition": 0.9, "domain": "y.com"},
+        ]
+        sorted_items = sort_results(items, self._classifs(items))
+        assert sorted_items[0]["page_url"] == "b"
+
+
+# ── CNPJ CEP ──────────────────────────────────────────────────────────────────
+
+from src.lookup.cnpj_client import _lookup_receitaws
+
+
+class TestReceitawsCep:
+    @pytest.mark.asyncio
+    async def test_receitaws_returns_cep(self):
+        mock_response = {
+            "nome": "Empresa Teste",
+            "fantasia": "",
+            "situacao": "ATIVA",
+            "atividade_principal": [{"text": "Comércio"}],
+            "qsa": [],
+            "logradouro": "Rua Teste",
+            "numero": "100",
+            "complemento": "",
+            "municipio": "São Paulo",
+            "uf": "SP",
+            "cep": "01310-100",
+        }
+        with patch("src.lookup.cnpj_client.httpx.AsyncClient") as mock_client:
+            mock_resp = MagicMock()  # síncrono: response.json() não é async no httpx
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = mock_response
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_resp)
+
+            result = await _lookup_receitaws("12345678000195", "12.345.678/0001-95")
+
+        assert result["cep"] == "01310-100"
+        assert result["status"] == "found"

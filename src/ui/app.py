@@ -27,6 +27,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from dotenv import load_dotenv
 load_dotenv()
 
+# Bridge: injeta st.secrets no os.environ para que os.getenv() funcione no Streamlit Cloud
+try:
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, str) and _k not in os.environ:
+            os.environ[_k] = _v
+except Exception:
+    pass
+
 from src.export.dossie_generator import generate as generate_dossie
 from src.export.pdf_exporter import to_bytes as pdf_to_bytes
 from src.lookup.orchestrator import lookup_domain
@@ -41,30 +49,14 @@ from src.search.s3_temp_client import upload_and_get_url as _s3_upload
 from src.search.searchapi_client import _API_KEY as _searchapi_key
 from src.search.searchapi_client import search_by_image_url as _searchapi_search
 
-_SOCIAL_DOMAINS = frozenset({
-    "instagram.com", "facebook.com", "twitter.com", "x.com",
-    "tiktok.com", "youtube.com", "pinterest.com", "linkedin.com",
-    "reddit.com", "snapchat.com", "tumblr.com", "flickr.com",
-    "threads.net", "vk.com", "t.me",
-})
-
-
-def _is_social(item: dict) -> bool:
-    """Retorna True se o domínio pertence a uma rede social conhecida."""
-    domain = item.get("domain", "").lower()
-    return any(social in domain for social in _SOCIAL_DOMAINS)
-
-
-def _site_priority(item: dict) -> int:
-    """
-    Prioridade de ordenação por tipo de site.
-    0 = site comercial / Google Maps (maior relevância jurídica)
-    1 = rede social (menor relevância)
-    """
-    return 1 if _is_social(item) else 0
-
-
-_CLASSIF_PRIORITY = {"pendente": 0, "violacao": 1, "investigar": 2, "nao_violacao": 3}
+from src.ui.helpers import (
+    _CLASSIF_PRIORITY,
+    _SOCIAL_DOMAINS,
+    get_display_image_url as _get_display_image_url,
+    is_social as _is_social,
+    site_priority as _site_priority,
+    sort_results as _sort_results,
+)
 
 
 # ─── configuração da página ────────────────────────────────────────────────────
@@ -96,7 +88,7 @@ def _confidence_label(item: dict) -> str:
         return f"{int(conf * 100)}% (FaceCheck)"
     if reko is not None:
         return f"{int(reko * 100)}% (Rekognition)"
-    return "—"
+    return "⚠️ Sem validação facial"
 
 
 def _source_label(item: dict) -> str:
@@ -106,6 +98,62 @@ def _source_label(item: dict) -> str:
     if source == "searchapi":
         return "SearchAPI"
     return "Google Vision"
+
+
+def _render_result_card(item: dict, classifs: dict) -> None:
+    url = item.get("page_url", "")
+    domain = item.get("domain", "—")
+    classification = classifs.get(url, "pendente")
+    border_color = {
+        "violacao": "#e74c3c",
+        "investigar": "#f39c12",
+        "nao_violacao": "#27ae60",
+        "pendente": "#bdc3c7",
+    }.get(classification, "#bdc3c7")
+
+    with st.container():
+        st.markdown(
+            f'<div style="border-left: 4px solid {border_color}; padding-left: 12px; margin-bottom: 8px;">',
+            unsafe_allow_html=True,
+        )
+        col_thumb, col_info, col_btns = st.columns([1, 2.5, 2])
+
+        with col_thumb:
+            img_url = _get_display_image_url(item)
+            if img_url:
+                try:
+                    st.image(img_url, width=110)
+                except Exception:
+                    st.caption("🖼️")
+            else:
+                st.caption("—")
+
+        with col_info:
+            st.markdown(f"**Domínio:** {domain}")
+            st.markdown(
+                f"**URL:** [{url[:80]}...]({url})" if len(url) > 80 else f"**URL:** [{url}]({url})"
+            )
+            st.caption(f"Fonte: {_source_label(item)} | Confiança: {_confidence_label(item)}")
+
+        with col_btns:
+            btn_cols = st.columns(3)
+            with btn_cols[0]:
+                active = classification == "violacao"
+                if st.button("✅ Violação", key=f"v_{url}", type="primary" if active else "secondary", width="stretch"):
+                    _classify(url, "violacao")
+                    st.rerun()
+            with btn_cols[1]:
+                active = classification == "nao_violacao"
+                if st.button("❌ Não é", key=f"n_{url}", type="primary" if active else "secondary", width="stretch"):
+                    _classify(url, "nao_violacao")
+                    st.rerun()
+            with btn_cols[2]:
+                active = classification == "investigar"
+                if st.button("🔍 Investigar", key=f"i_{url}", type="primary" if active else "secondary", width="stretch"):
+                    _classify(url, "investigar")
+                    st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _init_classifications(results: list):
@@ -350,9 +398,9 @@ if "search_result" in st.session_state:
         with fcol1:
             filter_sources = st.multiselect(
                 "Fonte",
-                options=["facecheck", "google_vision"],
-                default=["facecheck", "google_vision"],
-                format_func=lambda x: "FaceCheck" if x == "facecheck" else "Google Vision",
+                options=["facecheck", "google_vision", "searchapi"],
+                default=["facecheck", "google_vision", "searchapi"],
+                format_func=lambda x: {"facecheck": "FaceCheck", "google_vision": "Google Vision", "searchapi": "SearchAPI"}.get(x, x),
             )
         with fcol2:
             conf_range = st.slider("Confiança (%)", 0, 100, (0, 100), step=1)
@@ -383,13 +431,7 @@ if "search_result" in st.session_state:
     # Contador de classificações (sobre TODOS os resultados, não só os filtrados)
     classifs = st.session_state.classifications
 
-    filtered_results = sorted(
-        filtered_results,
-        key=lambda r: (
-            _CLASSIF_PRIORITY.get(classifs.get(r.get("page_url", ""), "pendente"), 0),
-            _site_priority(r),
-        ),
-    )
+    filtered_results = _sort_results(filtered_results, classifs)
     n_violacao = sum(1 for v in classifs.values() if v == "violacao")
     n_investigar = sum(1 for v in classifs.values() if v == "investigar")
     st.info(
@@ -397,78 +439,32 @@ if "search_result" in st.session_state:
         f"| {len(results) - n_violacao - n_investigar} pendentes"
     )
 
-    for item in filtered_results:
-        url = item.get("page_url", "")
-        domain = item.get("domain", "—")
-        classification = classifs.get(url, "pendente")
+    classified = [
+        r for r in filtered_results
+        if classifs.get(r.get("page_url", ""), "pendente") in ("violacao", "investigar")
+    ]
+    pending = [
+        r for r in filtered_results
+        if classifs.get(r.get("page_url", ""), "pendente") == "pendente"
+    ]
+    discarded = [
+        r for r in filtered_results
+        if classifs.get(r.get("page_url", ""), "pendente") == "nao_violacao"
+    ]
 
-        # Cor de fundo por classificação
-        border_color = {
-            "violacao": "#e74c3c",
-            "investigar": "#f39c12",
-            "nao_violacao": "#27ae60",
-            "pendente": "#bdc3c7",
-        }.get(classification, "#bdc3c7")
+    if pending:
+        for item in pending:
+            _render_result_card(item, classifs)
 
-        with st.container():
-            st.markdown(
-                f'<div style="border-left: 4px solid {border_color}; padding-left: 12px; margin-bottom: 8px;">',
-                unsafe_allow_html=True,
-            )
+    if classified:
+        with st.expander(f"✅ Classificados ({len(classified)})", expanded=False):
+            for item in classified:
+                _render_result_card(item, classifs)
 
-            col_thumb, col_info, col_btns = st.columns([1, 2.5, 2])
-
-            with col_thumb:
-                img_url = item.get("image_url", "")
-                if img_url:
-                    try:
-                        st.image(img_url, width=110)
-                    except Exception:
-                        st.caption("🖼️")
-                else:
-                    st.caption("—")
-
-            with col_info:
-                st.markdown(f"**Domínio:** {domain}")
-                st.markdown(f"**URL:** [{url[:80]}...]({url})" if len(url) > 80 else f"**URL:** [{url}]({url})")
-                st.caption(
-                    f"Fonte: {_source_label(item)} | Confiança: {_confidence_label(item)}"
-                )
-
-            with col_btns:
-                btn_cols = st.columns(3)
-                with btn_cols[0]:
-                    active = classification == "violacao"
-                    if st.button(
-                        "✅ Violação",
-                        key=f"v_{url}",
-                        type="primary" if active else "secondary",
-                        width="stretch",
-                    ):
-                        _classify(url, "violacao")
-                        st.rerun()
-                with btn_cols[1]:
-                    active = classification == "nao_violacao"
-                    if st.button(
-                        "❌ Não é",
-                        key=f"n_{url}",
-                        type="primary" if active else "secondary",
-                        width="stretch",
-                    ):
-                        _classify(url, "nao_violacao")
-                        st.rerun()
-                with btn_cols[2]:
-                    active = classification == "investigar"
-                    if st.button(
-                        "🔍 Investigar",
-                        key=f"i_{url}",
-                        type="primary" if active else "secondary",
-                        width="stretch",
-                    ):
-                        _classify(url, "investigar")
-                        st.rerun()
-
-            st.markdown("</div>", unsafe_allow_html=True)
+    if discarded:
+        with st.expander(f"❌ Descartados ({len(discarded)})", expanded=False):
+            for item in discarded:
+                _render_result_card(item, classifs)
 
     # ─── exportação ───────────────────────────────────────────────────────────
 
@@ -511,12 +507,22 @@ if "search_result" in st.session_state:
                         domain = item.get("domain", "")
                         item_copy = dict(item)
 
-                        # Tentar embutir imagem para o PDF
-                        img_url = item_copy.get("image_url", "")
-                        if img_url and not item_copy.get("preview_thumbnail"):
-                            thumbnail = _fetch_image_base64(img_url)
-                            if thumbnail:
-                                item_copy["preview_thumbnail"] = thumbnail
+                        # Tentar embutir imagem para o PDF (converter tudo para data URI)
+                        thumb = item_copy.get("preview_thumbnail") or ""
+                        img_url = item_copy.get("image_url") or ""
+                        if thumb and not thumb.startswith("data:") and not thumb.startswith("http"):
+                            # FaceCheck: base64 bruto → converter para data URI
+                            item_copy["preview_thumbnail"] = f"data:image/jpeg;base64,{thumb}"
+                        elif thumb and thumb.startswith("http"):
+                            # SearchAPI: URL do thumbnail → baixar e converter
+                            fetched = _fetch_image_base64(thumb)
+                            if fetched:
+                                item_copy["preview_thumbnail"] = fetched
+                        elif img_url and img_url.startswith("http"):
+                            # Google Vision: image_url → baixar e converter
+                            fetched = _fetch_image_base64(img_url)
+                            if fetched:
+                                item_copy["preview_thumbnail"] = fetched
 
                         enriched = {
                             "search_result": item_copy,

@@ -116,7 +116,7 @@ def _render_item(index: int, item: dict, label: str = "Violação") -> str:
     endereco = logradouro
     if municipio and logradouro != _PLACEHOLDER:
         endereco = f"{logradouro}, {municipio}/{uf}" if uf else f"{logradouro}, {municipio}"
-    if cep != _PLACEHOLDER and municipio:
+    if cep != _PLACEHOLDER:
         endereco = f"{endereco} — CEP {cep}"
 
     maps_url = _maps_url(logradouro, municipio, uf, cep)

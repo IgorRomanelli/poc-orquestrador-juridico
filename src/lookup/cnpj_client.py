@@ -200,7 +200,7 @@ async def _lookup_receitaws(digits: str, formatted: str) -> dict:
         "socios": socios,
         "telefone": None,
         "email": None,
-        "cep": None,
+        "cep": str(data["cep"]).strip() if data.get("cep") else None,
         "bairro": None,
         "natureza_juridica": None,
         "capital_social": None,

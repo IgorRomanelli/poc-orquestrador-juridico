@@ -47,7 +47,6 @@ async def search_by_image_url(image_url: str) -> dict:
     params = {
         "engine": "google_lens",
         "url": image_url,
-        "search_type": "visual_matches",
         "api_key": _API_KEY,
     }
 
