@@ -209,7 +209,10 @@ def _passes_filter(
         return False
     if hide_social and _is_social(item):
         return False
-    conf = item.get("confidence")
+    # Mesma prioridade do _confidence_label: FaceCheck primeiro, Rekognition como fallback.
+    conf_orig = item.get("confidence")
+    conf_rek = item.get("confidence_rekognition")
+    conf = conf_orig if conf_orig is not None else conf_rek
     if conf is None:
         return include_no_conf
     return conf_min <= conf <= conf_max
@@ -526,18 +529,22 @@ if "search_result" in st.session_state:
                     ]
                     unique_domains = list({item.get("domain", "") for item in marked_items if item.get("domain")})
 
-                    # Lookup em paralelo só para domínios marcados
-                    async def _lookup_all():
-                        tasks = [lookup_domain(d) for d in unique_domains]
-                        return await asyncio.gather(*tasks, return_exceptions=True)
+                    # Lookup em paralelo só para domínios ainda não consultados nesta sessão
+                    if "domain_lookup_cache" not in st.session_state:
+                        st.session_state["domain_lookup_cache"] = {}
+                    lookup_cache = st.session_state["domain_lookup_cache"]
 
-                    lookup_results = _run_async(_lookup_all())
-                    domain_lookup = {}
-                    for d, lr in zip(unique_domains, lookup_results):
-                        if isinstance(lr, Exception):
-                            domain_lookup[d] = {}
-                        else:
-                            domain_lookup[d] = lr
+                    pending_domains = [d for d in unique_domains if d not in lookup_cache]
+                    if pending_domains:
+                        async def _lookup_all():
+                            tasks = [lookup_domain(d) for d in pending_domains]
+                            return await asyncio.gather(*tasks, return_exceptions=True)
+
+                        new_results = _run_async(_lookup_all())
+                        for d, lr in zip(pending_domains, new_results):
+                            lookup_cache[d] = {} if isinstance(lr, Exception) else lr
+
+                    domain_lookup = {d: lookup_cache.get(d, {}) for d in unique_domains}
 
                 with st.spinner("Gerando dossiê (buscando imagens)..."):
                     violations_data = []
@@ -592,14 +599,14 @@ if "search_result" in st.session_state:
                     st.session_state["dossie_markdown"] = markdown_text
                     st.session_state["dossie_filename"] = f"dossie_{client_name.lower().replace(' ', '_')}_{today}.pdf"
 
-                if st.session_state.get("dossie_pdf") is not None:
-                    st.download_button(
-                        label="Baixar Dossiê PDF",
-                        data=st.session_state["dossie_pdf"],
-                        file_name=st.session_state["dossie_filename"],
-                        mime="application/pdf",
-                        type="primary",
-                    )
+            if st.session_state.get("dossie_pdf") is not None:
+                st.download_button(
+                    label="Baixar Dossiê PDF",
+                    data=st.session_state["dossie_pdf"],
+                    file_name=st.session_state["dossie_filename"],
+                    mime="application/pdf",
+                    type="primary",
+                )
 
-                    with st.expander("Pré-visualizar markdown do dossiê"):
-                        st.markdown(st.session_state["dossie_markdown"], unsafe_allow_html=True)
+                with st.expander("Pré-visualizar markdown do dossiê"):
+                    st.markdown(st.session_state["dossie_markdown"], unsafe_allow_html=True)
