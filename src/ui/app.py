@@ -35,6 +35,11 @@ from src.search.facecheck_client import search_by_face
 from src.search.google_vision_client import search_by_image
 from src.search.orchestrator import search_image  # fallback
 from src.search.rekognition_client import _is_configured as _rekognition_configured
+from src.search.s3_temp_client import _BUCKET as _s3_bucket
+from src.search.s3_temp_client import delete_object as _s3_delete
+from src.search.s3_temp_client import upload_and_get_url as _s3_upload
+from src.search.serpapi_client import _API_KEY as _serpapi_key
+from src.search.serpapi_client import search_by_image_url as _serpapi_search
 
 _SOCIAL_DOMAINS = frozenset({
     "instagram.com", "facebook.com", "twitter.com", "x.com",
@@ -96,7 +101,11 @@ def _confidence_label(item: dict) -> str:
 
 def _source_label(item: dict) -> str:
     source = item.get("source", "")
-    return "FaceCheck" if source == "facecheck" else "Google Vision"
+    if source == "facecheck":
+        return "FaceCheck"
+    if source == "serpapi":
+        return "SerpAPI"
+    return "Google Vision"
 
 
 def _init_classifications(results: list):
@@ -198,12 +207,18 @@ if uploaded_file:
                 _err = {"status": "error", "results": [], "message": "não executado"}
                 fc_result = _err
                 gv_result = _err
+                sp_result = {"status": "not_found", "results": [], "requires_manual_review": False, "message": None}
+
+                _serpapi_enabled = bool(_serpapi_key and _s3_bucket)
 
                 with st.status("🔍 Buscando ocorrências...", expanded=True) as search_status:
                     ph_fc = st.empty()
                     ph_gv = st.empty()
                     ph_fc.info("⏳ FaceCheck: aguardando...")
                     ph_gv.info("⏳ Google Vision: aguardando...")
+                    if _serpapi_enabled:
+                        ph_sp = st.empty()
+                        ph_sp.info("⏳ SerpAPI: aguardando...")
 
                     def _run_fc():
                         try:
@@ -217,13 +232,32 @@ if uploaded_file:
                         except Exception as exc:
                             return {"status": "error", "results": [], "message": str(exc)}
 
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                    def _run_serpapi():
+                        if not _serpapi_enabled:
+                            return sp_result
+                        s3_key = None
+                        try:
+                            image_url, s3_key = _s3_upload(uploaded_file.getvalue())
+                            return _asyncio.run(_serpapi_search(image_url))
+                        except Exception as exc:
+                            return {"status": "error", "results": [], "requires_manual_review": True, "message": str(exc)}
+                        finally:
+                            if s3_key:
+                                try:
+                                    _s3_delete(s3_key)
+                                except Exception:
+                                    pass
+
+                    n_workers = 3 if _serpapi_enabled else 2
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as executor:
                         fc_future = executor.submit(_run_fc)
                         gv_future = executor.submit(_run_gv)
+                        sp_future = executor.submit(_run_serpapi)
 
                         fc_shown = False
                         gv_shown = False
-                        while not (fc_future.done() and gv_future.done()):
+                        sp_shown = False
+                        while not (fc_future.done() and gv_future.done() and sp_future.done()):
                             if fc_future.done() and not fc_shown:
                                 fc_result = fc_future.result()
                                 n = len(fc_result.get("results", []))
@@ -234,6 +268,11 @@ if uploaded_file:
                                 n = len(gv_result.get("results", []))
                                 ph_gv.success(f"✅ Google Vision: {n} resultado(s)")
                                 gv_shown = True
+                            if _serpapi_enabled and sp_future.done() and not sp_shown:
+                                sp_result = sp_future.result()
+                                n = len(sp_result.get("results", []))
+                                ph_sp.success(f"✅ SerpAPI: {n} resultado(s)")
+                                sp_shown = True
                             time.sleep(0.15)
 
                         if not fc_shown:
@@ -244,8 +283,12 @@ if uploaded_file:
                             gv_result = gv_future.result()
                             n = len(gv_result.get("results", []))
                             ph_gv.success(f"✅ Google Vision: {n} resultado(s)")
+                        if _serpapi_enabled and not sp_shown:
+                            sp_result = sp_future.result()
+                            n = len(sp_result.get("results", []))
+                            ph_sp.success(f"✅ SerpAPI: {n} resultado(s)")
 
-                    result = aggregate(fc_result, gv_result)
+                    result = aggregate(fc_result, gv_result, sp_result)
 
                     if _rekognition_configured and result.get("results"):
                         try:

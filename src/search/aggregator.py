@@ -79,20 +79,20 @@ def _collect_messages(facecheck: dict, vision: dict) -> str | None:
 
 # ─── função pública ────────────────────────────────────────────────────────────
 
-def aggregate(facecheck_result: dict, vision_result: dict) -> dict:
+def aggregate(*source_results: dict) -> dict:
     """
-    Agrega, deduplica e ordena resultados de FaceCheck + Google Vision.
+    Agrega, deduplica e ordena resultados de múltiplas fontes de busca.
 
     Args:
-        facecheck_result: dict retornado por search_by_face()
-        vision_result: dict retornado por search_by_image()
+        *source_results: dicts retornados por qualquer cliente de busca.
+                         Primeiro argumento = FaceCheck, segundo = Google Vision.
 
     Returns:
         dict consolidado com results, domains, contagens e status global.
     """
     all_items = []
-    all_items.extend(facecheck_result.get("results", []))
-    all_items.extend(vision_result.get("results", []))
+    for r in source_results:
+        all_items.extend(r.get("results", []))
 
     total_raw = len(all_items)
 
@@ -117,8 +117,11 @@ def aggregate(facecheck_result: dict, vision_result: dict) -> dict:
             seen_domains.add(d)
             domains.append(d)
 
-    status, requires_manual = _compute_status(facecheck_result, vision_result)
-    message = _collect_messages(facecheck_result, vision_result)
+    # Status determinado pelas duas primeiras fontes (FaceCheck + Vision)
+    first = source_results[0] if source_results else {}
+    second = source_results[1] if len(source_results) > 1 else {}
+    status, requires_manual = _compute_status(first, second)
+    message = _collect_messages(first, second)
 
     return {
         "results": deduplicated,

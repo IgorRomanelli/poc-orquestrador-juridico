@@ -375,6 +375,32 @@ class TestAggregator:
         assert result["status"] == "not_found"
         assert result["total_deduplicated"] == 0
 
+    def test_aggregate_three_sources(self):
+        """aggregate aceita três fontes e une todos os resultados."""
+        from src.search.aggregator import aggregate
+
+        fc = {"status": "found", "results": [{"page_url": "https://a.com", "domain": "a.com"}], "requires_manual_review": False, "message": None}
+        gv = {"status": "found", "results": [{"page_url": "https://b.com", "domain": "b.com"}], "requires_manual_review": False, "message": None}
+        sp = {"status": "found", "results": [{"page_url": "https://c.com", "domain": "c.com"}], "requires_manual_review": False, "message": None}
+
+        result = aggregate(fc, gv, sp)
+
+        assert result["total_raw"] == 3
+        assert any(r["page_url"] == "https://c.com" for r in result["results"])
+
+    def test_aggregate_three_sources_with_serpapi_error(self):
+        """Erro no SerpAPI não quebra o status quando outras fontes encontraram."""
+        from src.search.aggregator import aggregate
+
+        fc = {"status": "found", "results": [{"page_url": "https://a.com", "domain": "a.com"}], "requires_manual_review": False, "message": None}
+        gv = {"status": "found", "results": [{"page_url": "https://b.com", "domain": "b.com"}], "requires_manual_review": False, "message": None}
+        sp = {"status": "error", "results": [], "requires_manual_review": True, "message": "timeout"}
+
+        result = aggregate(fc, gv, sp)
+
+        assert result["status"] == "found"
+        assert result["total_raw"] == 2
+
 
 # ─── search orchestrator ──────────────────────────────────────────────────────
 
