@@ -1,10 +1,10 @@
 """
-Cliente SerpAPI — busca reversa de imagem via Google Reverse Image Search.
+Cliente SearchAPI — busca reversa de imagem via Google Lens.
 
-Recebe uma URL pública de imagem (presigned URL do S3) e retorna lista de
+Recebe uma URL de imagem (presigned URL do S3) e retorna lista de
 páginas onde a imagem aparece, no mesmo formato dos outros clientes.
 
-Variável de ambiente: SERPAPI_KEY
+Variável de ambiente: SEARCHAPI_KEY
 """
 
 import os
@@ -15,8 +15,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-_API_KEY = os.getenv("SERPAPI_KEY", "")
-_SEARCH_URL = "https://serpapi.com/search"
+_API_KEY = os.getenv("SEARCHAPI_KEY", "")
+_SEARCH_URL = "https://www.searchapi.io/api/v1/search"
 
 
 def _extract_domain(url: str) -> str:
@@ -28,10 +28,10 @@ def _extract_domain(url: str) -> str:
 
 async def search_by_image_url(image_url: str) -> dict:
     """
-    Busca páginas que contêm a imagem usando SerpAPI Google Reverse Image.
+    Busca páginas que contêm a imagem usando SearchAPI Google Lens.
 
     Args:
-        image_url: presigned URL do S3 (expira em 60s).
+        image_url: URL da imagem (presigned URL do S3, expira em 60s).
 
     Returns:
         dict com status, results e message (mesmo formato dos outros clientes).
@@ -41,12 +41,13 @@ async def search_by_image_url(image_url: str) -> dict:
             "results": [],
             "status": "error",
             "requires_manual_review": True,
-            "message": "SERPAPI_KEY não configurada — configure no .env",
+            "message": "SEARCHAPI_KEY não configurada — configure no .env",
         }
 
     params = {
-        "engine": "google_reverse_image",
-        "image_url": image_url,
+        "engine": "google_lens",
+        "url": image_url,
+        "search_type": "visual_matches",
         "api_key": _API_KEY,
     }
 
@@ -60,18 +61,18 @@ async def search_by_image_url(image_url: str) -> dict:
             "results": [],
             "status": "error",
             "requires_manual_review": True,
-            "message": f"SerpAPI falhou: {exc}",
+            "message": f"SearchAPI falhou: {exc}",
         }
 
-    raw_results = data.get("image_results", [])
+    raw_results = data.get("visual_matches", [])
     results = [
         {
             "page_url": item.get("link", ""),
             "domain": _extract_domain(item.get("link", "")),
-            "source": "serpapi",
+            "source": "searchapi",
             "confidence": None,
-            "preview_thumbnail": "",
-            "image_url": "",
+            "preview_thumbnail": item.get("thumbnail", ""),
+            "image_url": item.get("image", {}).get("link", ""),
         }
         for item in raw_results
         if item.get("link")

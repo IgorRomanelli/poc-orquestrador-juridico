@@ -712,24 +712,24 @@ class TestS3TempClient:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-class TestSerpapiClient:
+class TestSearchapiClient:
     @pytest.mark.asyncio
     async def test_search_returns_results(self):
         """Busca bem-sucedida retorna lista de resultados no formato padrão."""
         from unittest.mock import MagicMock, patch
-        from src.search.serpapi_client import search_by_image_url
+        from src.search.searchapi_client import search_by_image_url
 
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "image_results": [
+            "visual_matches": [
                 {"title": "Página A", "link": "https://site-a.com/page", "source": "site-a.com"},
                 {"title": "Página B", "link": "https://site-b.com/page", "source": "site-b.com"},
             ]
         }
 
         with (
-            patch("src.search.serpapi_client._API_KEY", "fake-key"),
+            patch("src.search.searchapi_client._API_KEY", "fake-key"),
             patch("httpx.AsyncClient") as mock_cls,
         ):
             mock_cls.return_value.__aenter__.return_value.get.return_value = mock_response
@@ -738,21 +738,21 @@ class TestSerpapiClient:
         assert result["status"] == "found"
         assert len(result["results"]) == 2
         assert result["results"][0]["page_url"] == "https://site-a.com/page"
-        assert result["results"][0]["source"] == "serpapi"
+        assert result["results"][0]["source"] == "searchapi"
         assert result["results"][0]["domain"] == "site-a.com"
 
     @pytest.mark.asyncio
     async def test_search_returns_not_found_when_empty(self):
         """Sem resultados retorna status not_found."""
         from unittest.mock import MagicMock, patch
-        from src.search.serpapi_client import search_by_image_url
+        from src.search.searchapi_client import search_by_image_url
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"image_results": []}
+        mock_response.json.return_value = {"visual_matches": []}
 
         with (
-            patch("src.search.serpapi_client._API_KEY", "fake-key"),
+            patch("src.search.searchapi_client._API_KEY", "fake-key"),
             patch("httpx.AsyncClient") as mock_cls,
         ):
             mock_cls.return_value.__aenter__.return_value.get.return_value = mock_response
@@ -765,13 +765,13 @@ class TestSerpapiClient:
     async def test_search_returns_error_when_not_configured(self):
         """Sem API key retorna status error."""
         from unittest.mock import patch
-        from src.search.serpapi_client import search_by_image_url
+        from src.search.searchapi_client import search_by_image_url
 
-        with patch("src.search.serpapi_client._API_KEY", ""):
+        with patch("src.search.searchapi_client._API_KEY", ""):
             result = await search_by_image_url("https://s3.amazonaws.com/bucket/key?sig=abc")
 
         assert result["status"] == "error"
-        assert "SERPAPI_KEY" in result["message"]
+        assert "SEARCHAPI_KEY" in result["message"]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
