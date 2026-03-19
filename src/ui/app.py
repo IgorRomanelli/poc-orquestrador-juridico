@@ -48,6 +48,8 @@ from src.search.s3_temp_client import delete_object as _s3_delete
 from src.search.s3_temp_client import upload_and_get_url as _s3_upload
 from src.search.searchapi_client import _API_KEY as _searchapi_key
 from src.search.searchapi_client import search_by_image_url as _searchapi_search
+from src.search.serper_client import _API_KEY as _serper_key
+from src.search.serper_client import search_by_image_url as _serper_search
 
 from src.ui.helpers import (
     _CLASSIF_PRIORITY,
@@ -97,6 +99,8 @@ def _source_label(item: dict) -> str:
         return "FaceCheck"
     if source == "searchapi":
         return "SearchAPI"
+    if source == "serper":
+        return "Serper Lens"
     return "Google Vision"
 
 
@@ -258,6 +262,8 @@ if uploaded_file:
                 sp_result = {"status": "not_found", "results": [], "requires_manual_review": False, "message": None}
 
                 _searchapi_enabled = bool(_searchapi_key and _s3_bucket)
+                _serper_enabled = bool(_serper_key and _s3_bucket)
+                ser_result = {"status": "not_found", "results": [], "requires_manual_review": False, "message": None}
 
                 with st.status("🔍 Buscando ocorrências...", expanded=True) as search_status:
                     ph_fc = st.empty()
@@ -267,6 +273,9 @@ if uploaded_file:
                     if _searchapi_enabled:
                         ph_sp = st.empty()
                         ph_sp.info("⏳ SearchAPI: aguardando...")
+                    if _serper_enabled:
+                        ph_ser = st.empty()
+                        ph_ser.info("⏳ Serper Lens: aguardando...")
 
                     def _run_fc():
                         try:
@@ -280,32 +289,43 @@ if uploaded_file:
                         except Exception as exc:
                             return {"status": "error", "results": [], "message": str(exc)}
 
-                    def _run_searchapi():
-                        if not _searchapi_enabled:
-                            return sp_result
-                        s3_key = None
+                    # Upload S3 único — URL compartilhada por SearchAPI e Serper
+                    _shared_image_url = None
+                    _shared_s3_key = None
+                    if _searchapi_enabled or _serper_enabled:
                         try:
-                            image_url, s3_key = _s3_upload(uploaded_file.getvalue())
-                            return _asyncio.run(_searchapi_search(image_url))
+                            _shared_image_url, _shared_s3_key = _s3_upload(uploaded_file.getvalue())
+                        except Exception:
+                            _shared_image_url = None
+
+                    def _run_searchapi():
+                        if not _searchapi_enabled or not _shared_image_url:
+                            return sp_result
+                        try:
+                            return _asyncio.run(_searchapi_search(_shared_image_url))
                         except Exception as exc:
                             return {"status": "error", "results": [], "requires_manual_review": True, "message": str(exc)}
-                        finally:
-                            if s3_key:
-                                try:
-                                    _s3_delete(s3_key)
-                                except Exception:
-                                    pass
 
-                    n_workers = 3 if _searchapi_enabled else 2
+                    def _run_serper():
+                        if not _serper_enabled or not _shared_image_url:
+                            return ser_result
+                        try:
+                            return _asyncio.run(_serper_search(_shared_image_url))
+                        except Exception as exc:
+                            return {"status": "error", "results": [], "requires_manual_review": True, "message": str(exc)}
+
+                    n_workers = 2 + int(_searchapi_enabled) + int(_serper_enabled)
                     with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as executor:
                         fc_future = executor.submit(_run_fc)
                         gv_future = executor.submit(_run_gv)
                         sp_future = executor.submit(_run_searchapi)
+                        ser_future = executor.submit(_run_serper)
 
                         fc_shown = False
                         gv_shown = False
                         sp_shown = False
-                        while not (fc_future.done() and gv_future.done() and sp_future.done()):
+                        ser_shown = False
+                        while not (fc_future.done() and gv_future.done() and sp_future.done() and ser_future.done()):
                             if fc_future.done() and not fc_shown:
                                 fc_result = fc_future.result()
                                 n = len(fc_result.get("results", []))
@@ -321,6 +341,11 @@ if uploaded_file:
                                 n = len(sp_result.get("results", []))
                                 ph_sp.success(f"✅ SearchAPI: {n} resultado(s)")
                                 sp_shown = True
+                            if _serper_enabled and ser_future.done() and not ser_shown:
+                                ser_result = ser_future.result()
+                                n = len(ser_result.get("results", []))
+                                ph_ser.success(f"✅ Serper Lens: {n} resultado(s)")
+                                ser_shown = True
                             time.sleep(0.15)
 
                         if not fc_shown:
@@ -335,8 +360,18 @@ if uploaded_file:
                             sp_result = sp_future.result()
                             n = len(sp_result.get("results", []))
                             ph_sp.success(f"✅ SearchAPI: {n} resultado(s)")
+                        if _serper_enabled and not ser_shown:
+                            ser_result = ser_future.result()
+                            n = len(ser_result.get("results", []))
+                            ph_ser.success(f"✅ Serper Lens: {n} resultado(s)")
 
-                    result = aggregate(fc_result, gv_result, sp_result)
+                    if _shared_s3_key:
+                        try:
+                            _s3_delete(_shared_s3_key)
+                        except Exception:
+                            pass
+
+                    result = aggregate(fc_result, gv_result, sp_result, ser_result)
 
                     if _rekognition_configured and result.get("results"):
                         try:
@@ -398,9 +433,14 @@ if "search_result" in st.session_state:
         with fcol1:
             filter_sources = st.multiselect(
                 "Fonte",
-                options=["facecheck", "google_vision", "searchapi"],
-                default=["facecheck", "google_vision", "searchapi"],
-                format_func=lambda x: {"facecheck": "FaceCheck", "google_vision": "Google Vision", "searchapi": "SearchAPI"}.get(x, x),
+                options=["facecheck", "google_vision", "searchapi", "serper"],
+                default=["facecheck", "google_vision", "searchapi", "serper"],
+                format_func=lambda x: {
+                    "facecheck": "FaceCheck",
+                    "google_vision": "Google Vision",
+                    "searchapi": "SearchAPI",
+                    "serper": "Serper Lens",
+                }.get(x, x),
             )
         with fcol2:
             conf_range = st.slider("Confiança (%)", 0, 100, (0, 100), step=1)
