@@ -915,3 +915,91 @@ class TestReceitawsCep:
 
         assert result["cep"] == "01310-100"
         assert result["status"] == "found"
+
+
+import httpx
+import importlib
+
+
+class TestSerperClient:
+    """Testes do cliente Serper Lens."""
+
+    @pytest.mark.asyncio
+    async def test_returns_error_when_no_api_key(self, monkeypatch):
+        monkeypatch.setenv("SERPER_API_KEY", "")
+        import src.search.serper_client as mod
+        importlib.reload(mod)
+        result = await mod.search_by_image_url("https://example.com/img.jpg")
+        assert result["status"] == "error"
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_normalizes_organic_results(self, monkeypatch):
+        monkeypatch.setenv("SERPER_API_KEY", "test-key")
+        import src.search.serper_client as mod
+        importlib.reload(mod)
+
+        fake_response = {
+            "organic": [
+                {
+                    "link": "https://example.com/page",
+                    "imageUrl": "https://example.com/img.jpg",
+                    "thumbnailUrl": "https://encrypted-tbn0.gstatic.com/images?q=abc",
+                    "title": "Example Page",
+                }
+            ],
+            "credits": 3,
+        }
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = fake_response
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.post = AsyncMock(
+                return_value=mock_resp
+            )
+            result = await mod.search_by_image_url("https://example.com/img.jpg")
+
+        assert result["status"] == "found"
+        assert len(result["results"]) == 1
+        item = result["results"][0]
+        assert item["page_url"] == "https://example.com/page"
+        assert item["domain"] == "example.com"
+        assert item["source"] == "serper"
+        assert item["confidence"] is None
+        assert item["image_url"] == "https://example.com/img.jpg"
+        assert item["preview_thumbnail"] == "https://encrypted-tbn0.gstatic.com/images?q=abc"
+
+    @pytest.mark.asyncio
+    async def test_returns_not_found_when_organic_empty(self, monkeypatch):
+        monkeypatch.setenv("SERPER_API_KEY", "test-key")
+        import src.search.serper_client as mod
+        importlib.reload(mod)
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"organic": [], "credits": 3}
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.post = AsyncMock(
+                return_value=mock_resp
+            )
+            result = await mod.search_by_image_url("https://example.com/img.jpg")
+
+        assert result["status"] == "not_found"
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_returns_error_on_connection_failure(self, monkeypatch):
+        monkeypatch.setenv("SERPER_API_KEY", "test-key")
+        import src.search.serper_client as mod
+        importlib.reload(mod)
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.post = AsyncMock(
+                side_effect=httpx.ConnectError("timeout")
+            )
+            result = await mod.search_by_image_url("https://example.com/img.jpg")
+
+        assert result["status"] == "error"
+        assert "Serper" in result["message"]
