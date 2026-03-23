@@ -43,13 +43,26 @@ def _extract_domain(url: str) -> str:
         return url
 
 
+def _mime_from_b64(b64: str) -> str:
+    """Detecta mime type pelo prefixo base64 (magic bytes)."""
+    if b64.startswith("iVBORw0KGgo"):
+        return "image/png"
+    if b64.startswith("UklGR"):
+        return "image/webp"
+    return "image/jpeg"
+
+
 def _normalize_items(raw_items: list) -> list[dict]:
     """Converte items brutos do FaceCheck para estrutura padrão."""
     results = []
     for item in raw_items:
         page_url = item.get("url", "")
         base64_val = item.get("base64") or ""
-        preview_thumbnail = f"data:image/jpeg;base64,{base64_val}" if base64_val else ""
+        if base64_val:
+            mime = _mime_from_b64(base64_val)
+            preview_thumbnail = f"data:{mime};base64,{base64_val}"
+        else:
+            preview_thumbnail = ""
         results.append({
             "image_url": None,           # FaceCheck não retorna URL direta da imagem
             "page_url": page_url,
