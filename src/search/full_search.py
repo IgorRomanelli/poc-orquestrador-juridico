@@ -46,8 +46,19 @@ async def run_full_search(image_path: str, image_bytes: bytes) -> list[dict]:
     Returns:
         Lista de dicts deduplicados por page_url com chaves:
         image_url, page_url, source, confidence (e demais campos opcionais).
+
+    Raises:
+        RuntimeError: if the S3 upload fails (search cannot proceed without presigned URL).
+        Exception: any exception from the search sources propagates after S3 cleanup.
+
+    Note:
+        If any search source raises, asyncio.gather propagates the first exception
+        and all results are lost. Partial results are not supported (POC limitation).
     """
-    presigned_url, s3_key = s3_temp_client.upload_and_get_url(image_bytes)
+    try:
+        presigned_url, s3_key = s3_temp_client.upload_and_get_url(image_bytes)
+    except Exception as exc:
+        raise RuntimeError(f"Failed to upload image to S3 for search: {exc}") from exc
 
     try:
         orchestrator_result, serper_result, searchapi_result = await asyncio.gather(

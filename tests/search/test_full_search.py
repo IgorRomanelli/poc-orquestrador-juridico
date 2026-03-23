@@ -7,7 +7,7 @@ Cobre:
 3. S3 cleanup (delete_object) é chamado mesmo quando há exceção (finally)
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -64,13 +64,19 @@ _SEARCHAPI_RESULT = {
 }
 
 
+_UNSET = object()
+
+
 def _make_patches(
-    orchestrator_result=None,
-    serper_result=None,
-    searchapi_result=None,
+    orchestrator_result=_UNSET,
+    serper_result=_UNSET,
+    searchapi_result=_UNSET,
     presigned_url="https://s3.example.com/temp.jpg",
     s3_key="temp-search/uuid.jpg",
 ):
+    orch = orchestrator_result if orchestrator_result is not _UNSET else _ORCHESTRATOR_RESULT
+    serper = serper_result if serper_result is not _UNSET else _SERPER_RESULT
+    searchapi = searchapi_result if searchapi_result is not _UNSET else _SEARCHAPI_RESULT
     return {
         "upload": patch(
             "src.search.full_search.s3_temp_client.upload_and_get_url",
@@ -81,15 +87,15 @@ def _make_patches(
         ),
         "orchestrator": patch(
             "src.search.full_search.search_image",
-            new=AsyncMock(return_value=orchestrator_result or _ORCHESTRATOR_RESULT),
+            new=AsyncMock(return_value=orch),
         ),
         "serper": patch(
             "src.search.full_search.serper_client.search_by_image_url",
-            new=AsyncMock(return_value=serper_result or _SERPER_RESULT),
+            new=AsyncMock(return_value=serper),
         ),
         "searchapi": patch(
             "src.search.full_search.searchapi_client.search_by_image_url",
-            new=AsyncMock(return_value=searchapi_result or _SEARCHAPI_RESULT),
+            new=AsyncMock(return_value=searchapi),
         ),
     }
 
