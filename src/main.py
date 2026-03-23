@@ -52,7 +52,11 @@ def _extract_domain(url: str) -> str:
 
 
 def _to_search_result(raw: dict) -> dict:
-    confidence_int = int((raw.get("confidence") or 0.0) * 100)
+    raw_confidence = raw.get("confidence")
+    # None means the source found a match but provides no score (Google Vision, Serper, SearchAPI).
+    # Treat as suspeito (0.5) since it's a real match — better than hiding it as inconclusivo.
+    confidence_float = raw_confidence if raw_confidence is not None else 0.5
+    confidence_int = min(100, int(confidence_float * 100))
     if confidence_int >= 80:
         severity = "confirmado"
     elif confidence_int >= 40:
@@ -60,9 +64,10 @@ def _to_search_result(raw: dict) -> dict:
     else:
         severity = "inconclusivo"
     page_url = raw.get("page_url", "")
+    thumbnail = raw.get("image_url") or raw.get("preview_thumbnail", "")
     return {
         "id": str(uuid.uuid4()),
-        "thumbnailUrl": raw.get("image_url", ""),
+        "thumbnailUrl": thumbnail,
         "domain": _extract_domain(page_url),
         "companyName": "",
         "confidence": confidence_int,
@@ -119,7 +124,9 @@ async def lookup(domain: str):
 
 
 class DossieRequest(BaseModel):
-    client_name: str
+    client_name: str = ""
+    session_id: str = ""
+    user_email: str = ""
     results: list[dict]
 
 
