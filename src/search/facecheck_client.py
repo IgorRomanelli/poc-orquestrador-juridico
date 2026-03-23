@@ -59,8 +59,12 @@ def _normalize_items(raw_items: list) -> list[dict]:
         page_url = item.get("url", "")
         base64_val = item.get("base64") or ""
         if base64_val:
-            mime = _mime_from_b64(base64_val)
-            preview_thumbnail = f"data:{mime};base64,{base64_val}"
+            # FaceCheck may return a full data URI already (e.g. "data:image/webp;base64,...")
+            if base64_val.startswith("data:"):
+                preview_thumbnail = base64_val
+            else:
+                mime = _mime_from_b64(base64_val)
+                preview_thumbnail = f"data:{mime};base64,{base64_val}"
         else:
             preview_thumbnail = ""
         results.append({
