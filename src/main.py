@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import tempfile
@@ -136,15 +137,18 @@ class DossieRequest(BaseModel):
 
 @app.post("/dossie", dependencies=[Depends(_require_secret)])
 async def dossie(body: DossieRequest):
-    lookup_cache: dict[str, dict] = {}
-    violations: list[dict] = []
-    for result in body.results:
-        domain = result.get("domain", "")
-        if domain not in lookup_cache:
-            try:
-                lookup_cache[domain] = await lookup_domain(domain)
-            except Exception:
-                lookup_cache[domain] = {"status": "error"}
-        violations.append({"search_result": result, "lookup": lookup_cache[domain]})
+    unique_domains = list({r.get("domain", "") for r in body.results if r.get("domain")})
+    lookup_results = await asyncio.gather(
+        *[lookup_domain(d) for d in unique_domains],
+        return_exceptions=True,
+    )
+    lookup_cache = {
+        d: (r if not isinstance(r, Exception) else {"status": "error"})
+        for d, r in zip(unique_domains, lookup_results)
+    }
+    violations = [
+        {"search_result": r, "lookup": lookup_cache.get(r.get("domain", ""), {"status": "error"})}
+        for r in body.results
+    ]
     markdown = generate_dossie(body.client_name, violations, [], str(date.today()))
     return Response(content=pdf_to_bytes(markdown), media_type="application/pdf")
