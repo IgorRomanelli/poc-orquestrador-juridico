@@ -139,3 +139,29 @@ def test_lookup_domain_calls_and_returns(client, auth_headers):
     assert response.status_code == 200
     assert response.json()["domain"] == "example.com"
     assert response.json()["status"] == "found"
+
+
+# ─── POST /dossie ─────────────────────────────────────────────────────────────
+
+def test_dossie_returns_pdf_and_caches_duplicate_domains(client, auth_headers):
+    mock_lookup_result = {"domain": "example.com", "status": "found"}
+    fake_pdf_bytes = b"%PDF-fake"
+
+    results = [
+        {"domain": "example.com", "pageUrl": "https://example.com/page1", "confidence": 90},
+        {"domain": "other.com", "pageUrl": "https://other.com/page", "confidence": 70},
+        {"domain": "example.com", "pageUrl": "https://example.com/page2", "confidence": 85},
+    ]
+
+    with patch("src.main.lookup_domain", new=AsyncMock(return_value=mock_lookup_result)) as mock_lookup, \
+         patch("src.main.pdf_to_bytes", return_value=fake_pdf_bytes):
+        response = client.post(
+            "/dossie",
+            json={"client_name": "Ulysses", "results": results},
+            headers=auth_headers,
+        )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    # lookup_domain should be called once per unique domain (2), not once per result (3)
+    assert mock_lookup.call_count == 2

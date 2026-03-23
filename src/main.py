@@ -1,3 +1,4 @@
+import logging
 import os
 import tempfile
 import time
@@ -15,6 +16,8 @@ from src.export.dossie_generator import generate as generate_dossie
 from src.export.pdf_exporter import to_bytes as pdf_to_bytes
 from src.lookup.orchestrator import lookup_domain
 from src.search.full_search import run_full_search
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Orquestrador de APIs Jurídicas")
 
@@ -38,6 +41,9 @@ def _require_secret(api_key: str = Depends(_api_key_header)) -> str:
 
 
 jobs: dict[str, dict] = {}
+
+if not os.getenv("API_SECRET"):
+    logger.warning("API_SECRET is not set — all requests will be rejected with 401")
 
 
 def _extract_domain(url: str) -> str:
@@ -119,18 +125,15 @@ class DossieRequest(BaseModel):
 
 @app.post("/dossie", dependencies=[Depends(_require_secret)])
 async def dossie(body: DossieRequest):
-    seen: set[str] = set()
+    lookup_cache: dict[str, dict] = {}
     violations: list[dict] = []
     for result in body.results:
         domain = result.get("domain", "")
-        if domain not in seen:
-            seen.add(domain)
+        if domain not in lookup_cache:
             try:
-                lookup_result = await lookup_domain(domain)
+                lookup_cache[domain] = await lookup_domain(domain)
             except Exception:
-                lookup_result = {"status": "error"}
-        else:
-            lookup_result = {"status": "error"}
-        violations.append({"search_result": result, "lookup": lookup_result})
+                lookup_cache[domain] = {"status": "error"}
+        violations.append({"search_result": result, "lookup": lookup_cache[domain]})
     markdown = generate_dossie(body.client_name, violations, [], str(date.today()))
     return Response(content=pdf_to_bytes(markdown), media_type="application/pdf")
