@@ -53,9 +53,13 @@ def _extract_domain(url: str) -> str:
 
 def _to_search_result(raw: dict) -> dict:
     raw_confidence = raw.get("confidence")
-    # None means the source found a match but provides no score (Google Vision, Serper, SearchAPI).
-    # Treat as suspeito (0.5) since it's a real match — better than hiding it as inconclusivo.
-    confidence_float = raw_confidence if raw_confidence is not None else 0.5
+    # If the source has no native score, fall back to Rekognition similarity (if available).
+    # Final fallback: 0.5 (suspeito) — better than hiding a real match as inconclusivo.
+    if raw_confidence is None:
+        rek = raw.get("confidence_rekognition")
+        confidence_float = rek if rek is not None else 0.5
+    else:
+        confidence_float = raw_confidence
     confidence_int = min(100, int(confidence_float * 100))
     if confidence_int >= 80:
         severity = "confirmado"
@@ -64,7 +68,7 @@ def _to_search_result(raw: dict) -> dict:
     else:
         severity = "inconclusivo"
     page_url = raw.get("page_url", "")
-    thumbnail = raw.get("image_url") or raw.get("preview_thumbnail", "")
+    thumbnail = raw.get("image_url") or raw.get("preview_thumbnail") or ""
     return {
         "id": str(uuid.uuid4()),
         "thumbnailUrl": thumbnail,

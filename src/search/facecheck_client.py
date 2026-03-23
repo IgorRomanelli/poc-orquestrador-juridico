@@ -48,13 +48,15 @@ def _normalize_items(raw_items: list) -> list[dict]:
     results = []
     for item in raw_items:
         page_url = item.get("url", "")
+        base64_val = item.get("base64") or ""
+        preview_thumbnail = f"data:image/jpeg;base64,{base64_val}" if base64_val else ""
         results.append({
             "image_url": None,           # FaceCheck não retorna URL direta da imagem
             "page_url": page_url,
             "domain": _extract_domain(page_url),
             "source": "facecheck",
             "confidence": round(item.get("score", 0) / 100, 4) if item.get("score") is not None else None,
-            "preview_thumbnail": item.get("base64"),
+            "preview_thumbnail": preview_thumbnail,
         })
     return results
 
