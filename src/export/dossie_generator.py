@@ -98,7 +98,7 @@ def _render_item(index: int, item: dict, label: str = "Violação") -> str:
     jucesp = _as_dict(lookup.get("jucesp"))
     summary = _as_dict(lookup.get("summary"))
 
-    page_url = _v(search.get("page_url"))
+    page_url = _v(search.get("page_url") or search.get("pageUrl"))
     domain = _v(search.get("domain"))
     razao_social = _v(summary.get("razao_social"))
     nome_fantasia = _v(cnpj_data.get("nome_fantasia"))
