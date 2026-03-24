@@ -12,6 +12,30 @@ import os
 import markdown as _md
 from fpdf import FPDF
 
+# ─── normalização Latin-1 ─────────────────────────────────────────────────────
+
+# fpdf2 usa fontes built-in Latin-1; caracteres fora desse range causam erro.
+# Acentos portugueses (ã, é, ç…) SÃO Latin-1 — só precisamos trocar os extras.
+_UNICODE_REPLACEMENTS: dict[str, str] = {
+    "\u2014": "-",    # em dash —
+    "\u2013": "-",    # en dash –
+    "\u2019": "'",    # aspas simples direita '
+    "\u2018": "'",    # aspas simples esquerda '
+    "\u201c": '"',    # aspas duplas esquerda "
+    "\u201d": '"',    # aspas duplas direita "
+    "\u2026": "...",  # reticências …
+    "\u2022": "-",    # bullet •
+    "\u00b7": ".",    # ponto central (já é Latin-1, mas causa problemas em alguns contextos)
+}
+
+
+def _to_latin1(text: str) -> str:
+    """Substitui caracteres não-Latin-1 por equivalentes ASCII seguros."""
+    for char, replacement in _UNICODE_REPLACEMENTS.items():
+        text = text.replace(char, replacement)
+    # Garante que nenhum outro char fora do range Latin-1 vaze
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
 # ─── assets ───────────────────────────────────────────────────────────────────
 
 _ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
@@ -55,7 +79,7 @@ class _DossiePDF(FPDF):
         self.set_y(-15)
         self.set_font("Helvetica", "I", 8)
         self.set_text_color(*_GRAY)
-        self.cell(0, 10, f"Goulart|Law · Advocacia Especializada  —  {self.page_no()}", align="C")
+        self.cell(0, 10, f"Goulart|Law - Advocacia Especializada  -  {self.page_no()}", align="C")
 
 
 # ─── funções públicas ──────────────────────────────────────────────────────────
@@ -69,7 +93,8 @@ def to_bytes(markdown_text: str) -> bytes:
         RuntimeError: se a geração do PDF falhar.
     """
     try:
-        html = _md.markdown(markdown_text, extensions=["extra"])
+        safe_markdown = _to_latin1(markdown_text)
+        html = _md.markdown(safe_markdown, extensions=["extra"])
         pdf = _DossiePDF()
         pdf.set_margins(20, 20, 20)
         pdf.set_auto_page_break(auto=True, margin=20)
