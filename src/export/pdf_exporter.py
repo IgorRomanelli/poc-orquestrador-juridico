@@ -114,16 +114,22 @@ def _render_bullet(pdf: _DossiePDF, text: str) -> None:
         pdf.ln(5)
 
 
-def _embed_data_image(pdf: _DossiePDF, data_uri: str) -> None:
-    """Incorpora imagem a partir de data: URI base64."""
+def _embed_image(pdf: _DossiePDF, src: str) -> None:
+    """Incorpora imagem a partir de data: URI base64 ou URL remota."""
     try:
-        _header, b64data = data_uri.split(",", 1)
-        img_bytes = base64.b64decode(b64data)
+        if src.startswith("data:"):
+            _header, b64data = src.split(",", 1)
+            img_bytes = base64.b64decode(b64data)
+        else:
+            import httpx
+            resp = httpx.get(src, timeout=5.0, follow_redirects=True)
+            resp.raise_for_status()
+            img_bytes = resp.content
         _ensure_space(pdf, 55)
         pdf.image(io.BytesIO(img_bytes), w=50)
         pdf.ln(3)
     except Exception:
-        pass  # imagem inválida — ignora silenciosamente
+        pass  # imagem inválida ou inacessível — ignora silenciosamente
 
 
 def _render_markdown(pdf: _DossiePDF, markdown_text: str) -> None:
@@ -171,9 +177,9 @@ def _render_markdown(pdf: _DossiePDF, markdown_text: str) -> None:
 
         # ── imagem data: URI embutida pelo dossie_generator ───────────────────
         elif line.startswith("<img"):
-            m = re.search(r'src="(data:[^"]+)"', line)
+            m = re.search(r'src="([^"]+)"', line)
             if m:
-                _embed_data_image(pdf, m.group(1))
+                _embed_image(pdf, m.group(1))
 
         # ── item de lista ─────────────────────────────────────────────────────
         elif line.startswith("- "):

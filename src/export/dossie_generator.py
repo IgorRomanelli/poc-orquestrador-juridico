@@ -130,13 +130,10 @@ def _render_item(index: int, item: dict, label: str = "Violação") -> str:
     jucesp_url = _v(jucesp.get("jucesp_search_url"))
     confidence = _format_confidence(search)
 
-    # Frontend sends thumbnailUrl; raw backend results use preview_thumbnail.
-    # Only embed data: URIs — WeasyPrint fetching remote URLs causes timeouts.
     thumbnail = search.get("thumbnailUrl") or search.get("preview_thumbnail") or ""
     image_block = (
-        f'\n\n<img src="{thumbnail}" style="max-width:240px;max-height:240px;'
-        f'border:1px solid #ccc;margin:6px 0;display:block;">\n\n'
-        if thumbnail.startswith("data:")
+        f'\n\n<img src="{thumbnail}">\n\n'
+        if thumbnail
         else ""
     )
 
