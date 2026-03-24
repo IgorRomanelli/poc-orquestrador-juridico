@@ -153,6 +153,14 @@ async def dossie(body: DossieRequest):
             d: (r if not isinstance(r, Exception) else {"status": "error"})
             for d, r in zip(unique_domains, lookup_results)
         }
+        for d, r in lookup_cache.items():
+            logger.info(
+                "dossie: lookup[%s] status=%s cnpj=%s whois_registrant=%s",
+                d,
+                r.get("status"),
+                r.get("cnpj_data", {}).get("cnpj") if isinstance(r.get("cnpj_data"), dict) else "n/a",
+                r.get("whois", {}).get("registrant") if isinstance(r.get("whois"), dict) else "n/a",
+            )
         violations = [
             {"search_result": r, "lookup": lookup_cache.get(r.get("domain", ""), {"status": "error"})}
             for r in body.results
