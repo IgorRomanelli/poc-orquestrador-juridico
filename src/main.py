@@ -158,7 +158,8 @@ async def dossie(body: DossieRequest):
             for r in body.results
         ]
         logger.info("dossie: generating markdown for %d violations", len(violations))
-        markdown = generate_dossie(body.client_name, violations, [], str(date.today()))
+        client_name = body.client_name or body.user_email or "não identificado"
+        markdown = generate_dossie(client_name, violations, [], str(date.today()))
         logger.info("dossie: rendering PDF (%d chars markdown)", len(markdown))
         pdf_bytes = await asyncio.to_thread(pdf_to_bytes, markdown)
         logger.info("dossie: PDF generated (%d bytes)", len(pdf_bytes))

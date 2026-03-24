@@ -22,6 +22,8 @@ _GRAY = (136, 136, 136)
 
 # ─── Latin-1 sanitization ─────────────────────────────────────────────────────
 
+_MD_LINK_RE = re.compile(r'^\[(.+?)\]\((https?://[^)]+)\)$')
+
 _UNICODE_MAP: dict[str, str] = {
     "\u2014": "-",   # em dash
     "\u2013": "-",   # en dash
@@ -91,22 +93,34 @@ def _render_bullet(pdf: _DossiePDF, text: str) -> None:
     _ensure_space(pdf, 10)
     m = re.match(r"\*\*(.+?)\*\*(.*)", text)
     if m:
-        key   = _safe(m.group(1))
-        value = _safe(m.group(2).strip())
+        key       = _safe(m.group(1))
+        raw_value = m.group(2).strip()
+        link_m    = _MD_LINK_RE.match(raw_value)
+
         pdf.set_x(pdf.l_margin + 4)
         pdf.set_font("Helvetica", size=10)
         pdf.write(5, "- ")
         pdf.set_font("Helvetica", "B", 10)
         pdf.write(5, key)
         pdf.set_font("Helvetica", size=10)
-        # URLs e valores longos: quebra na próxima linha com recuo
-        if len(value) > 68:
+
+        if link_m:
+            # Markdown link [texto](url) → link clicável em azul
+            link_text = _safe(link_m.group(1))
+            link_url  = link_m.group(2)
+            pdf.set_text_color(*_NAVY)
+            pdf.write(5, " " + link_text, link=link_url)
+            pdf.set_text_color(0, 0, 0)
             pdf.ln(5)
-            pdf.set_x(pdf.l_margin + 10)
-            pdf.multi_cell(0, 5, value, new_x="LMARGIN", new_y="NEXT")
         else:
-            pdf.write(5, value)
-            pdf.ln(5)
+            value = _safe(raw_value)
+            if len(value) > 68:
+                pdf.ln(5)
+                pdf.set_x(pdf.l_margin + 10)
+                pdf.multi_cell(0, 5, value, new_x="LMARGIN", new_y="NEXT")
+            else:
+                pdf.write(5, value)
+                pdf.ln(5)
     else:
         pdf.set_x(pdf.l_margin + 4)
         pdf.set_font("Helvetica", size=10)
