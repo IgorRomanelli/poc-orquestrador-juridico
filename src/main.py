@@ -138,10 +138,13 @@ class DossieRequest(BaseModel):
 @app.post("/dossie", dependencies=[Depends(_require_secret)])
 async def dossie(body: DossieRequest):
     unique_domains = list({r.get("domain", "") for r in body.results if r.get("domain")})
-    lookup_results = await asyncio.gather(
-        *[lookup_domain(d) for d in unique_domains],
-        return_exceptions=True,
-    )
+    try:
+        lookup_results = await asyncio.wait_for(
+            asyncio.gather(*[lookup_domain(d) for d in unique_domains], return_exceptions=True),
+            timeout=25.0,
+        )
+    except asyncio.TimeoutError:
+        lookup_results = [{"status": "error"} for _ in unique_domains]
     lookup_cache = {
         d: (r if not isinstance(r, Exception) else {"status": "error"})
         for d, r in zip(unique_domains, lookup_results)
@@ -151,4 +154,5 @@ async def dossie(body: DossieRequest):
         for r in body.results
     ]
     markdown = generate_dossie(body.client_name, violations, [], str(date.today()))
-    return Response(content=pdf_to_bytes(markdown), media_type="application/pdf")
+    pdf_bytes = await asyncio.to_thread(pdf_to_bytes, markdown)
+    return Response(content=pdf_bytes, media_type="application/pdf")

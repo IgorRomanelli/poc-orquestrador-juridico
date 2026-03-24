@@ -26,7 +26,7 @@ _BRASILAPI_URL = "https://brasilapi.com.br/api/cnpj/v1/{cnpj}"
 _RECEITAWS_URL = "https://receitaws.com.br/v1/cnpj/{cnpj}"
 _CNPJ_PATTERN = re.compile(r"\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}")
 _REQUEST_DELAY_MS = int(os.getenv("CNPJ_REQUEST_DELAY_MS", "300"))
-_TIMEOUT_SECONDS = 5.0
+_TIMEOUT_SECONDS = 4.0
 
 
 # ─── helpers privados ──────────────────────────────────────────────────────────
