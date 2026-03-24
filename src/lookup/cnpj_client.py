@@ -25,8 +25,8 @@ load_dotenv()
 _BRASILAPI_URL = "https://brasilapi.com.br/api/cnpj/v1/{cnpj}"
 _RECEITAWS_URL = "https://receitaws.com.br/v1/cnpj/{cnpj}"
 _CNPJ_PATTERN = re.compile(r"\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}")
-_REQUEST_DELAY_MS = int(os.getenv("CNPJ_REQUEST_DELAY_MS", "1200"))
-_TIMEOUT_SECONDS = 15.0
+_REQUEST_DELAY_MS = int(os.getenv("CNPJ_REQUEST_DELAY_MS", "300"))
+_TIMEOUT_SECONDS = 5.0
 
 
 # ─── helpers privados ──────────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ async def _lookup_brasilapi(digits: str, formatted: str) -> dict:
         async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
             response = await client.get(url)
     except httpx.TimeoutException:
-        return _error_result(formatted, "BrasilAPI timeout após 15s")
+        return _error_result(formatted, "BrasilAPI timeout após 5s")
     except Exception as exc:
         return _error_result(formatted, f"Erro de conexão BrasilAPI: {exc}")
 
@@ -150,7 +150,7 @@ async def _lookup_receitaws(digits: str, formatted: str) -> dict:
         async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
             response = await client.get(url)
     except httpx.TimeoutException:
-        return _error_result(formatted, "receitaws timeout após 15s — validar manualmente")
+        return _error_result(formatted, "receitaws timeout após 5s — validar manualmente")
     except Exception as exc:
         return _error_result(formatted, f"Erro de conexão receitaws: {exc} — validar manualmente")
 

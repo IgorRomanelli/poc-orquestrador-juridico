@@ -161,10 +161,10 @@ async def lookup_whois(domain: str) -> dict:
     try:
         parsed = await asyncio.wait_for(
             asyncio.to_thread(whois.whois, domain),
-            timeout=10.0,
+            timeout=4.0,
         )
     except asyncio.TimeoutError:
-        return _error_result(domain, "WHOIS timeout após 10s — validar manualmente")
+        return _error_result(domain, "WHOIS timeout após 4s — validar manualmente")
     except Exception as exc:
         return _error_result(domain, f"WHOIS erro inesperado: {exc} — validar manualmente")
 

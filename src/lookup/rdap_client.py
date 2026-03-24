@@ -12,7 +12,7 @@ Função pública:
 import httpx
 
 _RDAP_BASE = "https://rdap.org/domain"
-_TIMEOUT = 10.0
+_TIMEOUT = 3.0
 
 
 # ─── helpers privados ──────────────────────────────────────────────────────────

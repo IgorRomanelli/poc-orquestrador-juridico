@@ -58,9 +58,12 @@ def _format_confidence(item: dict) -> str:
     parts = []
     if conf is not None:
         label = "FaceCheck" if source == "facecheck" else "Google Vision"
-        parts.append(f"{int(conf * 100)}% ({label})")
+        # confidence is already 0-100 integer from the frontend
+        conf_pct = int(conf) if conf > 1 else int(conf * 100)
+        parts.append(f"{conf_pct}% ({label})")
     if reko is not None:
-        parts.append(f"{int(reko * 100)}% (Rekognition)")
+        reko_pct = int(reko) if reko > 1 else int(reko * 100)
+        parts.append(f"{reko_pct}% (Rekognition)")
 
     return " | ".join(parts) if parts else _PLACEHOLDER
 
@@ -127,11 +130,12 @@ def _render_item(index: int, item: dict, label: str = "Violação") -> str:
     jucesp_url = _v(jucesp.get("jucesp_search_url"))
     confidence = _format_confidence(search)
 
-    thumbnail = search.get("preview_thumbnail") or ""
+    # Frontend sends thumbnailUrl; raw backend results use preview_thumbnail
+    thumbnail = search.get("thumbnailUrl") or search.get("preview_thumbnail") or ""
     image_block = (
         f'\n\n<img src="{thumbnail}" style="max-width:240px;max-height:240px;'
         f'border:1px solid #ccc;margin:6px 0;display:block;">\n\n'
-        if thumbnail.startswith("data:")
+        if thumbnail
         else ""
     )
 
