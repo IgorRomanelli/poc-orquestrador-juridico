@@ -137,22 +137,32 @@ class DossieRequest(BaseModel):
 
 @app.post("/dossie", dependencies=[Depends(_require_secret)])
 async def dossie(body: DossieRequest):
-    unique_domains = list({r.get("domain", "") for r in body.results if r.get("domain")})
+    logger.info("dossie: received %d results for client=%r", len(body.results), body.client_name)
     try:
-        lookup_results = await asyncio.wait_for(
-            asyncio.gather(*[lookup_domain(d) for d in unique_domains], return_exceptions=True),
-            timeout=25.0,
-        )
-    except asyncio.TimeoutError:
-        lookup_results = [{"status": "error"} for _ in unique_domains]
-    lookup_cache = {
-        d: (r if not isinstance(r, Exception) else {"status": "error"})
-        for d, r in zip(unique_domains, lookup_results)
-    }
-    violations = [
-        {"search_result": r, "lookup": lookup_cache.get(r.get("domain", ""), {"status": "error"})}
-        for r in body.results
-    ]
-    markdown = generate_dossie(body.client_name, violations, [], str(date.today()))
-    pdf_bytes = await asyncio.to_thread(pdf_to_bytes, markdown)
-    return Response(content=pdf_bytes, media_type="application/pdf")
+        unique_domains = list({r.get("domain", "") for r in body.results if r.get("domain")})
+        logger.info("dossie: looking up %d unique domains", len(unique_domains))
+        try:
+            lookup_results = await asyncio.wait_for(
+                asyncio.gather(*[lookup_domain(d) for d in unique_domains], return_exceptions=True),
+                timeout=25.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("dossie: lookup timed out, proceeding without lookup data")
+            lookup_results = [{"status": "error"} for _ in unique_domains]
+        lookup_cache = {
+            d: (r if not isinstance(r, Exception) else {"status": "error"})
+            for d, r in zip(unique_domains, lookup_results)
+        }
+        violations = [
+            {"search_result": r, "lookup": lookup_cache.get(r.get("domain", ""), {"status": "error"})}
+            for r in body.results
+        ]
+        logger.info("dossie: generating markdown for %d violations", len(violations))
+        markdown = generate_dossie(body.client_name, violations, [], str(date.today()))
+        logger.info("dossie: rendering PDF (%d chars markdown)", len(markdown))
+        pdf_bytes = await asyncio.to_thread(pdf_to_bytes, markdown)
+        logger.info("dossie: PDF generated (%d bytes)", len(pdf_bytes))
+        return Response(content=pdf_bytes, media_type="application/pdf")
+    except Exception as exc:
+        logger.exception("dossie: unhandled error: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar dossiê: {exc}") from exc
