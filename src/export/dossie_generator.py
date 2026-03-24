@@ -198,7 +198,7 @@ def generate(
         "",
         "---",
         "",
-        "## Violações Identificadas",
+        "## VIOLAÇÕES IDENTIFICADAS",
         "",
     ]
 
@@ -211,7 +211,7 @@ def generate(
     sections += [
         "---",
         "",
-        "## Para Investigação",
+        "## PARA INVESTIGAÇÃO",
         "",
     ]
 
@@ -223,7 +223,7 @@ def generate(
 
     sections += [
         "---",
-        f"*Dossiê gerado automaticamente. Curadoria realizada por advogado em {date}.*",
+        f"_Dossiê gerado automaticamente. Curadoria realizada por advogado em {date}._",
     ]
 
     return "\n".join(sections)

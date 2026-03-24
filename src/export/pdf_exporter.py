@@ -119,7 +119,7 @@ def _render_bullet(pdf: _DossiePDF, text: str) -> None:
                 pdf.set_x(pdf.l_margin + 10)
                 pdf.multi_cell(0, 5, value, new_x="LMARGIN", new_y="NEXT")
             else:
-                pdf.write(5, value)
+                pdf.write(5, " " + value)
                 pdf.ln(5)
     else:
         pdf.set_x(pdf.l_margin + 4)
