@@ -11,7 +11,7 @@ from datetime import datetime
 
 import whois
 
-_OWNER_ID_RE = re.compile(r"ownerid:\s*(\S+)", re.IGNORECASE)
+_OWNER_ID_RE = re.compile(r"owner-?id:\s*(\S+)", re.IGNORECASE)
 _RESPONSIBLE_RE = re.compile(r"responsible:\s*(.+)", re.IGNORECASE)
 _CNPJ_RE = re.compile(r"\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}")
 _REGISTROBR_WHOIS_URL = "https://registro.br/tecnologia/ferramentas/whois?search={domain}"
