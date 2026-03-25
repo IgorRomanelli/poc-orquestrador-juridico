@@ -42,6 +42,21 @@ def _require_secret(api_key: str = Depends(_api_key_header)) -> str:
 
 
 jobs: dict[str, dict] = {}
+_JOB_TTL_SECONDS = 30 * 60  # remove jobs concluídos após 30 min
+
+
+def _cleanup_old_jobs() -> None:
+    """Remove jobs concluídos mais antigos que _JOB_TTL_SECONDS para liberar memória."""
+    now = time.monotonic()
+    to_delete = [
+        jid for jid, job in jobs.items()
+        if job.get("status") != "processing"
+        and now - job.get("_created_at", now) > _JOB_TTL_SECONDS
+    ]
+    for jid in to_delete:
+        del jobs[jid]
+    if to_delete:
+        logger.info("cleanup: %d job(s) expirado(s) removidos da memória", len(to_delete))
 
 if not os.getenv("API_SECRET"):
     logger.warning("API_SECRET is not set — all requests will be rejected with 401")
@@ -109,8 +124,9 @@ async def search(image: UploadFile, background_tasks: BackgroundTasks):
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(image_bytes)
         tmp_path = tmp.name
+    _cleanup_old_jobs()
     job_id = str(uuid.uuid4())
-    jobs[job_id] = {"status": "processing"}
+    jobs[job_id] = {"status": "processing", "_created_at": time.monotonic()}
     background_tasks.add_task(_run_search, job_id, tmp_path, image_bytes)
     return {"job_id": job_id}
 
@@ -142,8 +158,14 @@ async def dossie(body: DossieRequest):
         unique_domains = list({r.get("domain", "") for r in body.results if r.get("domain")})
         logger.info("dossie: looking up %d unique domains", len(unique_domains))
         try:
+            _lookup_sem = asyncio.Semaphore(5)
+
+            async def _bound_lookup(d: str):
+                async with _lookup_sem:
+                    return await lookup_domain(d)
+
             lookup_results = await asyncio.wait_for(
-                asyncio.gather(*[lookup_domain(d) for d in unique_domains], return_exceptions=True),
+                asyncio.gather(*[_bound_lookup(d) for d in unique_domains], return_exceptions=True),
                 timeout=25.0,
             )
         except asyncio.TimeoutError:
