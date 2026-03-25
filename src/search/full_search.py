@@ -4,17 +4,21 @@ Orquestrador completo: combina as 4 fontes de busca em paralelo.
 Fluxo:
     1. Upload da imagem para S3 → obtém presigned URL temporária (60s)
     2. asyncio.gather das 3 fontes em paralelo:
-         - orchestrator.search_image (FaceCheck + Google Vision + Rekognition)
+         - orchestrator.search_image (FaceCheck + Google Vision)
          - serper_client.search_by_image_url (Google Lens via Serper)
          - searchapi_client.search_by_image_url (Google Lens via SearchAPI)
     3. S3 cleanup no finally (sempre executado)
     4. Combina e deduplica por page_url (mantém maior confidence)
+    5. Rekognition enriquece TODOS os resultados sem confidence nativa
+       (Vision, Serper, SearchAPI) — FaceCheck já traz seu próprio score
 """
 
 import asyncio
 
 from . import s3_temp_client, searchapi_client, serper_client
+from .aggregator import enrich_with_rekognition
 from .orchestrator import search_image
+from .rekognition_client import _is_configured as _rekognition_configured
 
 
 def _confidence_value(item: dict) -> float:
@@ -73,4 +77,16 @@ async def run_full_search(image_path: str, image_bytes: bytes) -> list[dict]:
     for result in (orchestrator_result, serper_result, searchapi_result):
         all_items.extend(result.get("results", []))
 
-    return _deduplicate(all_items)
+    deduplicated = _deduplicate(all_items)
+
+    # Rekognition roda sobre TODOS os itens sem confidence nativa (Vision, Serper, SearchAPI).
+    # FaceCheck já retorna seu próprio score — não precisa ser re-enriquecido.
+    if _rekognition_configured:
+        to_enrich = [item for item in deduplicated if item.get("confidence") is None]
+        if to_enrich:
+            try:
+                await enrich_with_rekognition(to_enrich, image_bytes)
+            except Exception:
+                pass  # Rekognition é opcional — nunca bloqueia o fluxo principal
+
+    return deduplicated
