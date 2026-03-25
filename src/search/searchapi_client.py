@@ -69,7 +69,8 @@ async def search_by_image_url(image_url: str) -> dict:
             "page_url": item.get("link", ""),
             "domain": _extract_domain(item.get("link", "")),
             "source": "searchapi",
-            "confidence": 0.70,  # Google Lens encontrou a imagem na página
+            "confidence": None,
+            "source_confidence": 0.70,  # Google Lens encontrou a imagem na página
             "preview_thumbnail": item.get("thumbnail", ""),
             "image_url": item.get("image", {}).get("link", ""),
         }

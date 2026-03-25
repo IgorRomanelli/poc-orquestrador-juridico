@@ -73,7 +73,8 @@ def _to_search_result(raw: dict) -> dict:
     # Final fallback: 0.5 (suspeito) — better than hiding a real match as inconclusivo.
     if raw_confidence is None:
         rek = raw.get("confidence_rekognition")
-        confidence_float = rek if rek is not None else 0.5
+        structural = raw.get("source_confidence", 0.5)
+        confidence_float = rek if rek is not None else structural
     else:
         confidence_float = raw_confidence
     confidence_int = min(100, int(confidence_float * 100))
