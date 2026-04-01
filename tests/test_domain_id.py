@@ -304,3 +304,36 @@ class TestIdentifyDomainOperator:
         assert result["source"] == "pending"
         assert result["requires_manual_review"] is True
         assert result["message"] is not None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Seção 2 — Testes de integração (I/O real, skipados por padrão)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.integration
+class TestDomainIdIntegration:
+    """
+    Testes reais contra crt.sh e Netlas.io.
+    Rodar com: pytest -m integration tests/test_domain_id.py -v
+
+    Requer NETLAS_API_KEY no ambiente para os testes do Netlas.
+    """
+
+    async def test_crtsh_real_domain(self):
+        """crt.sh retorna resultado para domínio real conhecido."""
+        from src.lookup.domain_id_client import lookup_by_certs
+
+        result = await lookup_by_certs("google.com")
+        assert result["status"] in ("found", "not_found")
+        assert "source" in result
+        print(f"\ncrt.sh google.com → org={result['org']} status={result['status']}")
+
+    async def test_identify_operator_real_domain(self):
+        """Pipeline completo para domínio .com."""
+        from src.lookup.domain_id_client import identify_domain_operator
+
+        result = await identify_domain_operator("namecheap.com")
+        assert result["status"] in ("found", "not_found", "pending")
+        assert "org" in result
+        assert "source" in result
+        print(f"\nidentify_operator namecheap.com → org={result['org']} source={result['source']}")
