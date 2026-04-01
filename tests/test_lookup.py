@@ -360,50 +360,6 @@ class TestCnpjClient:
         assert await extract_cnpj_from_text(None) is None
 
 
-# ─── jucesp_client ────────────────────────────────────────────────────────────
-
-class TestJucespClient:
-
-    async def test_builds_url_with_razao_social(self):
-        """URL gerada aponta para o portal JUCESP Online com razão social como parâmetro."""
-        from src.lookup.jucesp_client import lookup_jucesp
-
-        result = await lookup_jucesp("Empresa Exemplo Ltda", "11222333000181")
-
-        assert "jucesponline.sp.gov.br" in result["jucesp_search_url"]
-        assert result["status"] == "manual_required"
-        # URL deve conter parâmetro de busca quando razão social é fornecida
-        assert "Empresa" in result["jucesp_search_url"] or "q=" in result["jucesp_search_url"]
-
-    async def test_always_requires_manual_review(self):
-        """requires_manual_review é sempre True, independente dos inputs."""
-        from src.lookup.jucesp_client import lookup_jucesp
-
-        for razao, cnpj in [("Empresa", "123"), (None, "123"), ("Empresa", None), (None, None)]:
-            result = await lookup_jucesp(razao, cnpj)
-            assert result["requires_manual_review"] is True, f"Falhou para ({razao}, {cnpj})"
-            assert result["status"] == "manual_required"
-
-    async def test_none_inputs_returns_base_url(self):
-        """Inputs None geram URL base do portal JUCESP Online."""
-        from src.lookup.jucesp_client import lookup_jucesp
-
-        result = await lookup_jucesp(None, None)
-
-        assert result["jucesp_search_url"] == "https://www.jucesponline.sp.gov.br"
-        assert result["contrato_social_url"] is None
-
-    async def test_returned_keys(self):
-        """Resultado contém todas as chaves esperadas."""
-        from src.lookup.jucesp_client import lookup_jucesp
-
-        result = await lookup_jucesp("Empresa", "11222333000181")
-
-        for key in ("razao_social", "cnpj", "jucesp_search_url", "contrato_social_url",
-                    "status", "requires_manual_review", "message"):
-            assert key in result, f"Chave ausente: {key}"
-
-
 # ─── orchestrator ─────────────────────────────────────────────────────────────
 
 class TestOrchestrator:
@@ -436,26 +392,14 @@ class TestOrchestrator:
             "message": None,
         }
 
-    def _make_jucesp(self):
-        return {
-            "razao_social": "Empresa Ltda",
-            "cnpj": "11.222.333/0001-81",
-            "jucesp_search_url": "https://www.jucesp.sp.gov.br/BuscaEmpresa?nome=Empresa+Ltda",
-            "contrato_social_url": None,
-            "status": "manual_required",
-            "requires_manual_review": True,
-            "message": "Consulta JUCESP requer verificação manual — link direto gerado para agilizar",
-        }
-
     async def test_combines_all_results(self):
-        """Orchestrator combina WHOIS + CNPJ + JUCESP em estrutura unificada."""
+        """Orchestrator combina WHOIS + CNPJ em estrutura unificada."""
         from src.lookup.orchestrator import lookup_domain
 
         with (
             patch("src.lookup.orchestrator.lookup_whois", return_value=self._make_whois_found()),
             patch("src.lookup.orchestrator.extract_cnpj_from_text", return_value="11222333000181"),
             patch("src.lookup.orchestrator.lookup_cnpj", return_value=self._make_cnpj_found()),
-            patch("src.lookup.orchestrator.lookup_jucesp", return_value=self._make_jucesp()),
         ):
             result = await lookup_domain("exemplo.com.br")
 
@@ -463,7 +407,6 @@ class TestOrchestrator:
         assert result["status"] == "found"
         assert "whois" in result
         assert "cnpj_data" in result
-        assert "jucesp" in result
         assert "summary" in result
         assert result["summary"]["razao_social"] == "Empresa Ltda"
         assert result["summary"]["cnpj"] == "11.222.333/0001-81"
@@ -472,19 +415,9 @@ class TestOrchestrator:
         """Status é 'partial' quando WHOIS encontrado mas CNPJ não."""
         from src.lookup.orchestrator import lookup_domain
 
-        cnpj_not_found = {
-            **self._make_cnpj_found(),
-            "razao_social": None,
-            "cnpj": None,
-            "status": "not_found",
-            "requires_manual_review": True,
-            "message": "CNPJ não encontrado no WHOIS — validar manualmente",
-        }
-
         with (
             patch("src.lookup.orchestrator.lookup_whois", return_value=self._make_whois_found()),
             patch("src.lookup.orchestrator.extract_cnpj_from_text", return_value=None),
-            patch("src.lookup.orchestrator.lookup_jucesp", return_value=self._make_jucesp()),
         ):
             result = await lookup_domain("exemplo.com.br")
 
@@ -499,7 +432,6 @@ class TestOrchestrator:
             patch("src.lookup.orchestrator.lookup_whois", return_value=self._make_whois_found()),
             patch("src.lookup.orchestrator.extract_cnpj_from_text", return_value="11222333000181"),
             patch("src.lookup.orchestrator.lookup_cnpj", side_effect=RuntimeError("falha")),
-            patch("src.lookup.orchestrator.lookup_jucesp", return_value=self._make_jucesp()),
         ):
             result = await lookup_domain("exemplo.com.br")
 
@@ -518,7 +450,6 @@ class TestOrchestrator:
             patch("src.lookup.orchestrator.lookup_whois", return_value=whois),
             patch("src.lookup.orchestrator.extract_cnpj_from_text", return_value="11222333000181"),
             patch("src.lookup.orchestrator.lookup_cnpj", return_value=cnpj),
-            patch("src.lookup.orchestrator.lookup_jucesp", return_value=self._make_jucesp()),
         ):
             result = await lookup_domain("exemplo.com.br")
 
@@ -554,7 +485,6 @@ async def test_real_domain_lookup_h2_criterion():
 
         w = result["whois"]
         c = result["cnpj_data"]
-        j = result["jucesp"]
 
         print(f"\n{'='*60}")
         print(f"DOMÍNIO: {domain}")
@@ -589,14 +519,9 @@ async def test_real_domain_lookup_h2_criterion():
         if c.get('message'):
             print(f"   ⚠ {c['message']}")
 
-        print(f"\n── JUCESP ({j['status']})")
-        print(f"   JUCESP:       {j.get('jucesp_search_url')}")
-        if j.get('message'):
-            print(f"   ⚠ {j['message']}")
-
     # Garantir que nenhum resultado tem campos ausentes
     for r in results:
-        for key in ("domain", "status", "requires_manual_review", "whois", "cnpj_data", "jucesp", "summary"):
+        for key in ("domain", "status", "requires_manual_review", "whois", "cnpj_data", "summary"):
             assert key in r, f"Chave ausente no resultado de {r.get('domain')}: {key}"
 
     # Critério H2: ≥ 70% com status found ou partial (sem necessidade de intervenção além da JUCESP)
@@ -604,3 +529,141 @@ async def test_real_domain_lookup_h2_criterion():
     rate = len(success) / len(results)
     print(f"\nTaxa de sucesso H2: {rate:.0%} ({len(success)}/{len(results)})")
     assert rate >= 0.70, f"H2 não atingido: {rate:.0%} < 70%"
+
+
+# ─── orchestrator — Passo 1c (domain_id) ──────────────────────────────────────
+
+class TestOrchestrateDomainId:
+
+    def _make_whois_privacy(self, domain="exemplo.com") -> dict:
+        return {
+            "domain": domain, "registrant": "WhoisGuard Protected",
+            "responsible": None, "contacts": [], "registrant_email": None,
+            "registrar": "Namecheap", "creation_date": "2021-01-01",
+            "expiration_date": "2025-01-01", "name_servers": ["ns1.namecheap.com"],
+            "document": None,
+            "registrobr_url": f"https://registro.br/tecnologia/ferramentas/whois?search={domain}",
+            "status": "found", "requires_manual_review": False, "message": None,
+        }
+
+    def _make_whois_not_found(self, domain="exemplo.com") -> dict:
+        return {
+            "domain": domain, "registrant": None, "responsible": None, "contacts": [],
+            "registrant_email": None, "registrar": None, "creation_date": None,
+            "expiration_date": None, "name_servers": [], "document": None,
+            "registrobr_url": f"https://registro.br/tecnologia/ferramentas/whois?search={domain}",
+            "status": "not_found", "requires_manual_review": True,
+            "message": "WHOIS sem dados de registrante — validar manualmente",
+        }
+
+    def _make_cnpj_not_found(self) -> dict:
+        return {
+            "cnpj": None, "razao_social": None, "nome_fantasia": None,
+            "situacao": None, "atividade_principal": None, "logradouro": None,
+            "socios": [], "status": "not_found", "requires_manual_review": True,
+            "message": "CNPJ não encontrado — validar manualmente",
+        }
+
+    async def test_domain_id_called_for_com_with_privacy_proxy(self):
+        """Para .com com privacy proxy no WHOIS, aciona identify_domain_operator."""
+        from src.lookup.orchestrator import lookup_domain
+
+        domain_id_result = {
+            "org": "Empresa Via crt.sh Ltda", "source": "crt.sh",
+            "status": "found", "requires_manual_review": False, "message": None,
+        }
+
+        with patch("src.lookup.orchestrator.lookup_whois", return_value=self._make_whois_privacy()), \
+             patch("src.lookup.orchestrator.lookup_rdap", return_value={"status": "not_found"}), \
+             patch("src.lookup.orchestrator.identify_domain_operator", new_callable=AsyncMock,
+                   return_value=domain_id_result) as mock_domain_id, \
+             patch("src.lookup.orchestrator.lookup_cnpj", new_callable=AsyncMock,
+                   return_value=self._make_cnpj_not_found()), \
+             patch("src.lookup.orchestrator.extract_cnpj_from_text", new_callable=AsyncMock,
+                   return_value=None):
+
+            result = await lookup_domain("exemplo.com")
+
+        mock_domain_id.assert_called_once_with("exemplo.com")
+        assert result["domain_id"]["org"] == "Empresa Via crt.sh Ltda"
+        assert result["domain_id"]["source"] == "crt.sh"
+
+    async def test_domain_id_not_called_for_br_domain(self):
+        """Para .com.br, Passo 1c nunca é acionado."""
+        from src.lookup.orchestrator import lookup_domain
+
+        whois_br = {
+            "domain": "exemplo.com.br", "registrant": "Empresa BR Ltda",
+            "responsible": None, "contacts": [], "registrant_email": None,
+            "registrar": "Registro.br", "creation_date": "2021-01-01",
+            "expiration_date": "2025-01-01", "name_servers": ["ns1.exemplo.com.br"],
+            "document": "12.345.678/0001-99",
+            "registrobr_url": "https://registro.br/...",
+            "status": "found", "requires_manual_review": False, "message": None,
+        }
+        cnpj_found = {
+            "cnpj": "12345678000199", "razao_social": "Empresa BR Ltda",
+            "nome_fantasia": None, "situacao": "ATIVA", "atividade_principal": None,
+            "logradouro": None, "socios": [], "status": "found",
+            "requires_manual_review": False, "message": None,
+        }
+
+        with patch("src.lookup.orchestrator.lookup_whois", return_value=whois_br), \
+             patch("src.lookup.orchestrator.identify_domain_operator") as mock_domain_id, \
+             patch("src.lookup.orchestrator.lookup_cnpj", new_callable=AsyncMock,
+                   return_value=cnpj_found), \
+             patch("src.lookup.orchestrator.extract_cnpj_from_text", new_callable=AsyncMock,
+                   return_value="12.345.678/0001-99"):
+
+            result = await lookup_domain("exemplo.com.br")
+
+        mock_domain_id.assert_not_called()
+
+    async def test_domain_id_not_called_when_whois_has_real_registrant(self):
+        """Para .com com registrante real no WHOIS, Passo 1c não é acionado."""
+        from src.lookup.orchestrator import lookup_domain
+
+        whois_com_real = {
+            "domain": "exemplo.com", "registrant": "Real Company Inc",
+            "responsible": None, "contacts": [], "registrant_email": "admin@real.com",
+            "registrar": "GoDaddy", "creation_date": "2019-03-01",
+            "expiration_date": "2026-03-01", "name_servers": ["ns1.godaddy.com"],
+            "document": None, "registrobr_url": "https://registro.br/...",
+            "status": "found", "requires_manual_review": False, "message": None,
+        }
+
+        with patch("src.lookup.orchestrator.lookup_whois", return_value=whois_com_real), \
+             patch("src.lookup.orchestrator.identify_domain_operator") as mock_domain_id, \
+             patch("src.lookup.orchestrator.lookup_cnpj", new_callable=AsyncMock,
+                   return_value=self._make_cnpj_not_found()), \
+             patch("src.lookup.orchestrator.extract_cnpj_from_text", new_callable=AsyncMock,
+                   return_value=None):
+
+            result = await lookup_domain("exemplo.com")
+
+        mock_domain_id.assert_not_called()
+
+    async def test_domain_id_result_added_to_return_dict(self):
+        """Resultado do domain_id aparece na chave 'domain_id' do retorno."""
+        from src.lookup.orchestrator import lookup_domain
+
+        domain_id_pending = {
+            "org": None, "source": "pending", "status": "pending",
+            "requires_manual_review": True,
+            "message": "Operador não identificado automaticamente",
+        }
+
+        with patch("src.lookup.orchestrator.lookup_whois", return_value=self._make_whois_not_found()), \
+             patch("src.lookup.orchestrator.lookup_rdap", return_value={"status": "not_found"}), \
+             patch("src.lookup.orchestrator.identify_domain_operator", new_callable=AsyncMock,
+                   return_value=domain_id_pending), \
+             patch("src.lookup.orchestrator.lookup_cnpj", new_callable=AsyncMock,
+                   return_value=self._make_cnpj_not_found()), \
+             patch("src.lookup.orchestrator.extract_cnpj_from_text", new_callable=AsyncMock,
+                   return_value=None):
+
+            result = await lookup_domain("exemplo.com")
+
+        assert "domain_id" in result
+        assert result["domain_id"]["status"] == "pending"
+        assert result["domain_id"]["requires_manual_review"] is True

@@ -14,7 +14,7 @@ Status global: "found" | "partial" | "not_found" | "error"
 import asyncio
 
 from .cnpj_client import extract_cnpj_from_text, lookup_cnpj
-from .jucesp_client import lookup_jucesp
+from .domain_id_client import identify_domain_operator
 from .rdap_client import lookup_rdap
 from .whois_client import _is_privacy_proxy, lookup_whois
 
@@ -40,25 +40,26 @@ def _compute_global_status(whois: dict, cnpj: dict) -> str:
     return "not_found"
 
 
-def _collect_review_reasons(whois: dict, cnpj: dict, jucesp: dict) -> list[str]:
+def _collect_review_reasons(whois: dict, cnpj: dict) -> list[str]:
     reasons = []
-    for result in (whois, cnpj, jucesp):
+    for result in (whois, cnpj):
         msg = result.get("message")
         if result.get("requires_manual_review") and msg:
             reasons.append(msg)
     return reasons
 
 
-def _build_summary(whois: dict, cnpj: dict, jucesp: dict) -> dict:
+def _build_summary(whois: dict, cnpj: dict, domain_id: dict | None = None) -> dict:
     razao_social = cnpj.get("razao_social") or whois.get("registrant")
+    if not razao_social and domain_id and domain_id.get("org"):
+        razao_social = domain_id["org"]
     return {
         "razao_social": razao_social,
         "cnpj": cnpj.get("cnpj"),
         "registrant": whois.get("registrant"),
         "address": cnpj.get("logradouro"),
         "socios": cnpj.get("socios", []),
-        "jucesp_search_url": jucesp.get("jucesp_search_url"),
-        "manual_review_reasons": _collect_review_reasons(whois, cnpj, jucesp),
+        "manual_review_reasons": _collect_review_reasons(whois, cnpj),
     }
 
 
@@ -97,6 +98,15 @@ async def lookup_domain(domain: str) -> dict:
             if not whois_result.get("expiration_date"):
                 whois_result["expiration_date"] = rdap.get("expiration_date")
 
+    # Passo 1c: pipeline crt.sh → Netlas para .com sem registrante útil
+    domain_id_result = None
+    is_com_domain = domain.strip().lower().endswith(".com") and not _is_br_domain(domain)
+    registrant_after_rdap = whois_result.get("registrant")
+    has_useful_registrant = bool(registrant_after_rdap) and not _is_privacy_proxy(registrant_after_rdap)
+
+    if is_com_domain and not has_useful_registrant:
+        domain_id_result = await identify_domain_operator(domain)
+
     # Extrair CNPJ: prioriza campo owner-id do Registro.br, fallback para regex no texto
     registrant = whois_result.get("registrant")
     registrant_email = whois_result.get("registrant_email")
@@ -105,30 +115,18 @@ async def lookup_domain(domain: str) -> dict:
         search_text = " ".join(filter(None, [registrant, registrant_email]))
         cnpj_candidate = await extract_cnpj_from_text(search_text)
 
-    # Passo 2: CNPJ + JUCESP em paralelo
+    # Passo 2: CNPJ
     cnpj_coro = lookup_cnpj(cnpj_candidate) if cnpj_candidate else _no_cnpj_result(domain)
-    jucesp_coro = lookup_jucesp(registrant, cnpj_candidate)
 
-    cnpj_result, jucesp_result = await asyncio.gather(
-        cnpj_coro,
-        jucesp_coro,
-        return_exceptions=True,
-    )
-
-    # Isolar exceções inesperadas sem matar o resultado inteiro
-    if isinstance(cnpj_result, Exception):
-        cnpj_result = _exception_to_error(cnpj_result, "CNPJ")
-    if isinstance(jucesp_result, Exception):
-        jucesp_result = _exception_to_error(jucesp_result, "JUCESP")
-
-    # Atualizar JUCESP com razão social do CNPJ se encontrado
-    if cnpj_result.get("razao_social") and jucesp_result.get("status") == "manual_required":
-        jucesp_result = await lookup_jucesp(cnpj_result["razao_social"], cnpj_result.get("cnpj"))
+    try:
+        cnpj_result = await cnpj_coro
+    except Exception as exc:
+        cnpj_result = _exception_to_error(exc, "CNPJ")
 
     global_status = _compute_global_status(whois_result, cnpj_result)
     requires_manual = any(
         r.get("requires_manual_review")
-        for r in (whois_result, cnpj_result, jucesp_result)
+        for r in (whois_result, cnpj_result)
     )
 
     return {
@@ -137,8 +135,8 @@ async def lookup_domain(domain: str) -> dict:
         "requires_manual_review": requires_manual,
         "whois": whois_result,
         "cnpj_data": cnpj_result,
-        "jucesp": jucesp_result,
-        "summary": _build_summary(whois_result, cnpj_result, jucesp_result),
+        "domain_id": domain_id_result,
+        "summary": _build_summary(whois_result, cnpj_result, domain_id_result),
     }
 
 
