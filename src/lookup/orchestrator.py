@@ -124,7 +124,10 @@ async def lookup_domain(domain: str) -> dict:
         cnpj_result = _exception_to_error(exc, "CNPJ")
 
     global_status = _compute_global_status(whois_result, cnpj_result)
-    requires_manual = any(
+    domain_id_needs_review = (
+        domain_id_result.get("requires_manual_review") if domain_id_result else False
+    )
+    requires_manual = domain_id_needs_review or any(
         r.get("requires_manual_review")
         for r in (whois_result, cnpj_result)
     )
