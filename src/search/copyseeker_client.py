@@ -61,12 +61,19 @@ async def search_by_image_url(image_url: str) -> dict:
             )
             response.raise_for_status()
             data = response.json()
-    except Exception as exc:
+    except httpx.HTTPStatusError as exc:
         return {
             "results": [],
             "status": "error",
             "requires_manual_review": True,
-            "message": f"CopySeeker falhou: {exc}",
+            "message": f"CopySeeker retornou HTTP {exc.response.status_code} — validar manualmente",
+        }
+    except Exception:
+        return {
+            "results": [],
+            "status": "error",
+            "requires_manual_review": True,
+            "message": "CopySeeker falhou com erro inesperado — validar manualmente",
         }
 
     pages = data.get("Pages", [])

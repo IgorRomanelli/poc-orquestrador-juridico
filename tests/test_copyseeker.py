@@ -14,8 +14,6 @@ class TestCopyseekerClient:
         """Sem COPYSEEKER_API_KEY configurada, retorna error sem HTTP."""
         with patch("src.search.copyseeker_client._API_KEY", ""):
             from src.search import copyseeker_client
-            import importlib
-            importlib.reload(copyseeker_client)
             result = await copyseeker_client.search_by_image_url("https://s3.example.com/image.jpg")
 
         assert result["status"] == "error"
