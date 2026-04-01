@@ -131,3 +131,69 @@ class TestCopyseekerClient:
             result = await copyseeker_client.search_by_image_url("https://s3.example.com/image.jpg")
 
         assert result["results"][0]["domain"] == "site.com.br"
+
+
+class TestFullSearchWithCopyseeker:
+
+    async def test_copyseeker_results_included_in_full_search(self):
+        """full_search inclui resultados do CopySeeker na lista final."""
+        from src.search.full_search import run_full_search
+        from unittest.mock import AsyncMock, patch
+
+        copyseeker_result = {
+            "results": [{"page_url": "https://copyseeker-only.com/page", "domain": "copyseeker-only.com",
+                         "source": "copyseeker", "confidence": None, "source_confidence": 0.70,
+                         "preview_thumbnail": "", "image_url": ""}],
+            "status": "found", "requires_manual_review": False, "message": None,
+        }
+        empty_result = {"results": [], "status": "not_found", "requires_manual_review": False, "message": None}
+
+        with (
+            patch("src.search.full_search.s3_temp_client.upload_and_get_url",
+                  return_value=("https://s3.example.com/img.jpg", "key123")),
+            patch("src.search.full_search.s3_temp_client.delete_object"),
+            patch("src.search.full_search.search_image", new=AsyncMock(return_value=empty_result)),
+            patch("src.search.full_search.serper_client.search_by_image_url",
+                  new=AsyncMock(return_value=empty_result)),
+            patch("src.search.full_search.searchapi_client.search_by_image_url",
+                  new=AsyncMock(return_value=empty_result)),
+            patch("src.search.full_search.copyseeker_client.search_by_image_url",
+                  new=AsyncMock(return_value=copyseeker_result)),
+            patch("src.search.full_search._rekognition_configured", False),
+        ):
+            results = await run_full_search("/tmp/image.jpg", b"fake_bytes")
+
+        urls = [r["page_url"] for r in results]
+        assert "https://copyseeker-only.com/page" in urls
+
+    async def test_copyseeker_error_does_not_block_other_sources(self):
+        """Erro no CopySeeker não cancela resultados de outras fontes."""
+        from src.search.full_search import run_full_search
+        from unittest.mock import AsyncMock, patch
+
+        serper_result = {
+            "results": [{"page_url": "https://serper.com/page", "domain": "serper.com",
+                         "source": "serper", "confidence": None, "source_confidence": 0.70,
+                         "preview_thumbnail": "", "image_url": ""}],
+            "status": "found", "requires_manual_review": False, "message": None,
+        }
+        empty_result = {"results": [], "status": "not_found", "requires_manual_review": False, "message": None}
+        error_result = {"results": [], "status": "error", "requires_manual_review": True, "message": "CopySeeker falhou"}
+
+        with (
+            patch("src.search.full_search.s3_temp_client.upload_and_get_url",
+                  return_value=("https://s3.example.com/img.jpg", "key123")),
+            patch("src.search.full_search.s3_temp_client.delete_object"),
+            patch("src.search.full_search.search_image", new=AsyncMock(return_value=empty_result)),
+            patch("src.search.full_search.serper_client.search_by_image_url",
+                  new=AsyncMock(return_value=serper_result)),
+            patch("src.search.full_search.searchapi_client.search_by_image_url",
+                  new=AsyncMock(return_value=empty_result)),
+            patch("src.search.full_search.copyseeker_client.search_by_image_url",
+                  new=AsyncMock(return_value=error_result)),
+            patch("src.search.full_search._rekognition_configured", False),
+        ):
+            results = await run_full_search("/tmp/image.jpg", b"fake_bytes")
+
+        urls = [r["page_url"] for r in results]
+        assert "https://serper.com/page" in urls

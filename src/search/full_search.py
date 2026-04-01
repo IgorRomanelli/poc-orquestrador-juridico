@@ -3,10 +3,11 @@ Orquestrador completo: combina as 4 fontes de busca em paralelo.
 
 Fluxo:
     1. Upload da imagem para S3 → obtém presigned URL temporária (60s)
-    2. asyncio.gather das 3 fontes em paralelo:
+    2. asyncio.gather das 4 fontes em paralelo:
          - orchestrator.search_image (FaceCheck + Google Vision)
          - serper_client.search_by_image_url (Google Lens via Serper)
          - searchapi_client.search_by_image_url (Google Lens via SearchAPI)
+         - copyseeker_client.search_by_image_url (busca reversa visual)
     3. S3 cleanup no finally (sempre executado)
     4. Combina e deduplica por page_url (mantém maior confidence)
     5. Rekognition enriquece TODOS os resultados sem confidence nativa
@@ -15,7 +16,7 @@ Fluxo:
 
 import asyncio
 
-from . import s3_temp_client, searchapi_client, serper_client
+from . import copyseeker_client, s3_temp_client, searchapi_client, serper_client
 from .aggregator import enrich_with_rekognition
 from .orchestrator import search_image
 from .rekognition_client import _is_configured as _rekognition_configured
@@ -65,16 +66,17 @@ async def run_full_search(image_path: str, image_bytes: bytes) -> list[dict]:
         raise RuntimeError(f"Failed to upload image to S3 for search: {exc}") from exc
 
     try:
-        orchestrator_result, serper_result, searchapi_result = await asyncio.gather(
+        orchestrator_result, serper_result, searchapi_result, copyseeker_result = await asyncio.gather(
             search_image(image_path),
             serper_client.search_by_image_url(presigned_url),
             searchapi_client.search_by_image_url(presigned_url),
+            copyseeker_client.search_by_image_url(presigned_url),
         )
     finally:
         s3_temp_client.delete_object(s3_key)
 
     all_items: list[dict] = []
-    for result in (orchestrator_result, serper_result, searchapi_result):
+    for result in (orchestrator_result, serper_result, searchapi_result, copyseeker_result):
         all_items.extend(result.get("results", []))
 
     deduplicated = _deduplicate(all_items)
