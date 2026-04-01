@@ -77,7 +77,16 @@ async def lookup_by_certs(domain: str) -> dict:
             "message": f"crt.sh HTTP {response.status_code} — validar manualmente",
         }
 
-    records = response.json()
+    try:
+        records = response.json()
+    except Exception:
+        return {
+            "org": None,
+            "source": "crt.sh",
+            "status": "error",
+            "requires_manual_review": True,
+            "message": "crt.sh resposta inválida (JSON malformado) — validar manualmente",
+        }
     if not records:
         return {
             "org": None,
@@ -88,7 +97,7 @@ async def lookup_by_certs(domain: str) -> dict:
         }
 
     for record in records:
-        org = record.get("issuer_o") or ""
+        org = record.get("subject_o") or ""
         if org and not _is_known_ca(org):
             return {
                 "org": org.strip(),
@@ -145,7 +154,16 @@ async def lookup_by_netlas(domain: str, api_key: str) -> dict:
             "message": f"Netlas HTTP {response.status_code} — validar manualmente",
         }
 
-    data = response.json()
+    try:
+        data = response.json()
+    except Exception:
+        return {
+            "org": None,
+            "source": "netlas",
+            "status": "error",
+            "requires_manual_review": True,
+            "message": "Netlas resposta inválida (JSON malformado) — validar manualmente",
+        }
     items = data.get("items") or []
     if not items:
         return {

@@ -11,15 +11,15 @@ pytestmark = pytest.mark.asyncio
 
 class TestLookupByCerts:
 
-    async def test_found_returns_org_from_issuer_o(self):
-        """crt.sh retorna cert com issuer_o — extrai org e retorna status found."""
+    async def test_found_returns_org_from_subject_o(self):
+        """crt.sh retorna cert com subject_o — extrai org e retorna status found."""
         from src.lookup.domain_id_client import lookup_by_certs
 
         fake_response = MagicMock()
         fake_response.status_code = 200
         fake_response.json.return_value = [
-            {"issuer_o": "Empresa Exemplo Ltda", "entry_timestamp": "2024-06-01"},
-            {"issuer_o": "Let's Encrypt", "entry_timestamp": "2023-01-01"},
+            {"subject_o": "Empresa Exemplo Ltda", "entry_timestamp": "2024-06-01"},
+            {"subject_o": "Let's Encrypt", "entry_timestamp": "2023-01-01"},
         ]
 
         with patch("src.lookup.domain_id_client.httpx.AsyncClient") as mock_client_cls:
@@ -41,9 +41,9 @@ class TestLookupByCerts:
         fake_response = MagicMock()
         fake_response.status_code = 200
         fake_response.json.return_value = [
-            {"issuer_o": "Let's Encrypt", "entry_timestamp": "2024-06-01"},
-            {"issuer_o": "Comodo CA Limited", "entry_timestamp": "2023-06-01"},
-            {"issuer_o": "Empresa Real Ltda", "entry_timestamp": "2022-06-01"},
+            {"subject_o": "Let's Encrypt", "entry_timestamp": "2024-06-01"},
+            {"subject_o": "Comodo CA Limited", "entry_timestamp": "2023-06-01"},
+            {"subject_o": "Empresa Real Ltda", "entry_timestamp": "2022-06-01"},
         ]
 
         with patch("src.lookup.domain_id_client.httpx.AsyncClient") as mock_client_cls:
