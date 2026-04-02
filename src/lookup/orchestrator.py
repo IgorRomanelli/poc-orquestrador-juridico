@@ -115,6 +115,18 @@ async def lookup_domain(domain: str) -> dict:
         search_text = " ".join(filter(None, [registrant, registrant_email]))
         cnpj_candidate = await extract_cnpj_from_text(search_text)
 
+    # Fallback para domínios .br: RDAP do Registro.br expõe o CNPJ no handle
+    # da entidade registrante de forma estruturada — mais confiável que texto WHOIS
+    if not cnpj_candidate and _is_br_domain(domain):
+        rdap_br = await asyncio.to_thread(lookup_rdap, domain)
+        if rdap_br.get("status") == "found":
+            for entity in rdap_br.get("raw", {}).get("entities", []):
+                if "registrant" in entity.get("roles", []):
+                    handle = entity.get("handle", "")
+                    cnpj_candidate = await extract_cnpj_from_text(handle)
+                    if cnpj_candidate:
+                        break
+
     # Passo 2: CNPJ
     cnpj_coro = lookup_cnpj(cnpj_candidate) if cnpj_candidate else _no_cnpj_result(domain)
 
