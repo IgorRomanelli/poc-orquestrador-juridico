@@ -1,8 +1,11 @@
 """
-Cliente SearchAPI — busca reversa de imagem via Google Lens (exact_matches).
+Cliente SearchAPI — busca reversa de imagem via Yandex.
 
 Recebe uma URL de imagem (presigned URL do S3) e retorna lista de
-páginas onde a imagem aparece de forma idêntica ou quase idêntica.
+páginas onde a imagem aparece, no mesmo formato dos outros clientes.
+
+Usa índice do Yandex, complementar ao Google para detectar violações
+em sites não indexados ou com menor cobertura pelo Google.
 
 Variável de ambiente: SEARCHAPI_KEY
 """
@@ -28,7 +31,7 @@ def _extract_domain(url: str) -> str:
 
 async def search_by_image_url(image_url: str) -> dict:
     """
-    Busca páginas que contêm a imagem usando SearchAPI Google Lens.
+    Busca páginas que contêm a imagem usando Yandex Reverse Image via SearchAPI.
 
     Args:
         image_url: URL da imagem (presigned URL do S3, expira em 60s).
@@ -45,8 +48,7 @@ async def search_by_image_url(image_url: str) -> dict:
         }
 
     params = {
-        "engine": "google_lens",
-        "search_type": "exact_matches",
+        "engine": "yandex_reverse_image",
         "url": image_url,
         "api_key": _API_KEY,
     }
@@ -61,17 +63,17 @@ async def search_by_image_url(image_url: str) -> dict:
             "results": [],
             "status": "error",
             "requires_manual_review": True,
-            "message": f"SearchAPI falhou: {exc}",
+            "message": f"Yandex (SearchAPI) falhou: {exc}",
         }
 
-    raw_results = data.get("exact_matches", [])
+    raw_results = data.get("visual_matches", [])
     results = [
         {
             "page_url": item.get("link", ""),
             "domain": _extract_domain(item.get("link", "")),
-            "source": "searchapi",
+            "source": "yandex",
             "confidence": None,
-            "source_confidence": 0.85,  # Google Lens exact_matches — imagem idêntica ou quase
+            "source_confidence": 0.70,  # Yandex encontrou a imagem na página
             "preview_thumbnail": item.get("thumbnail", ""),
             "image_url": item.get("image", {}).get("link", ""),
         }
