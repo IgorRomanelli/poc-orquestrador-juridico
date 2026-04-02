@@ -1,8 +1,8 @@
 """
-Cliente SearchAPI — busca reversa de imagem via Google Lens (exact_matches).
+Cliente SearchAPI — busca reversa de imagem via Google Lens (exact + visual).
 
-Recebe uma URL de imagem (presigned URL do S3) e retorna lista de
-páginas onde a imagem aparece de forma idêntica ou quase idêntica.
+Usa search_type=all para obter exact_matches (imagem idêntica, score 0.85)
+e visual_matches (imagem parecida, score 0.70) em uma única chamada.
 
 Variável de ambiente: SEARCHAPI_KEY
 """
@@ -28,7 +28,11 @@ def _extract_domain(url: str) -> str:
 
 async def search_by_image_url(image_url: str) -> dict:
     """
-    Busca páginas que contêm a imagem usando SearchAPI Google Lens.
+    Busca páginas que contêm a imagem usando SearchAPI Google Lens (search_type=all).
+
+    Retorna exact_matches (score 0.85) e visual_matches (score 0.70) numa
+    única chamada à API. A deduplicação por page_url em full_search mantém
+    o item de maior confidence quando há sobreposição.
 
     Args:
         image_url: URL da imagem (presigned URL do S3, expira em 60s).
@@ -46,7 +50,7 @@ async def search_by_image_url(image_url: str) -> dict:
 
     params = {
         "engine": "google_lens",
-        "search_type": "exact_matches",
+        "search_type": "all",
         "url": image_url,
         "api_key": _API_KEY,
     }
@@ -64,20 +68,31 @@ async def search_by_image_url(image_url: str) -> dict:
             "message": f"SearchAPI falhou: {exc}",
         }
 
-    raw_results = data.get("exact_matches", [])
-    results = [
-        {
-            "page_url": item.get("link", ""),
-            "domain": _extract_domain(item.get("link", "")),
-            "source": "searchapi",
-            "confidence": None,
-            "source_confidence": 0.85,  # Google Lens exact_matches — imagem idêntica ou quase
-            "preview_thumbnail": item.get("thumbnail", ""),
-            "image_url": item.get("image", {}).get("link", ""),
-        }
-        for item in raw_results
-        if item.get("link")
-    ]
+    results = []
+
+    for item in data.get("exact_matches", []):
+        if item.get("link"):
+            results.append({
+                "page_url": item.get("link", ""),
+                "domain": _extract_domain(item.get("link", "")),
+                "source": "searchapi",
+                "confidence": None,
+                "source_confidence": 0.85,  # imagem idêntica ou quase
+                "preview_thumbnail": item.get("thumbnail", ""),
+                "image_url": item.get("image", {}).get("link", ""),
+            })
+
+    for item in data.get("visual_matches", []):
+        if item.get("link"):
+            results.append({
+                "page_url": item.get("link", ""),
+                "domain": _extract_domain(item.get("link", "")),
+                "source": "searchapi",
+                "confidence": None,
+                "source_confidence": 0.70,  # imagem visualmente parecida
+                "preview_thumbnail": item.get("thumbnail", ""),
+                "image_url": item.get("image", {}).get("link", ""),
+            })
 
     return {
         "results": results,
