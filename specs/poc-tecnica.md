@@ -68,8 +68,9 @@
 - [x] `src/lookup/whois_client.py` — consulta WHOIS de um domínio
 - [x] `src/lookup/cnpj_client.py` — consulta Receita Federal via receitaws (sem token, JSON limpo)
 - [x] `src/lookup/jucesp_client.py` — gera link direto JUCESP + flag manual_required (scraping desproporcional para Fase 1)
-- [x] `src/lookup/orchestrator.py` — chama os 3 em paralelo para um domínio
-- [x] `tests/test_lookup.py` — 21 testes unitários passando; bloco de integração real aguarda domínios de Ulysses
+- [x] `src/lookup/orchestrator.py` — chama os 3 em paralelo para um domínio; Passo 1c integrado
+- [x] `src/lookup/domain_id_client.py` — identifica operador de domínios `.com` via crt.sh (subject_o) → Netlas WHOIS histórico → pending; acionado quando WHOIS/RDAP não retorna registrante útil
+- [x] `tests/test_lookup.py` — 46 testes unitários passando
 - [ ] Critério de parada: > 30% exigir intervenção manual → parar e revisar
 
 **Comportamento obrigatório quando dado não encontrado:**
@@ -98,9 +99,15 @@
 - [x] `ai_docs/google-vision-api.md` — documentar endpoints, rate limits e formato de resposta do Google Vision
 - [x] `src/search/facecheck_client.py` — client para FaceCheck.ID
 - [x] `src/search/google_vision_client.py` — client para Google Vision Web Detection
-- [x] `src/search/aggregator.py` — agrega + deduplica resultados das duas APIs
-- [x] `src/search/orchestrator.py` — chama as duas APIs em paralelo (asyncio)
-- [x] `tests/test_search.py` — 20 testes unitários passando; bloco de integração aguarda imagens de casos do Ulysses
+- [x] `src/search/serper_client.py` — Google Lens via Serper (busca reversa por URL)
+- [x] `src/search/searchapi_client.py` — Google Lens via SearchAPI (busca reversa por URL, redundância)
+- [x] `src/search/copyseeker_client.py` — busca reversa visual via RapidAPI; retorna páginas com a imagem
+- [x] `src/search/rekognition_client.py` — Amazon Rekognition CompareFaces; enriquece confidence dos resultados sem score nativo
+- [x] `src/search/s3_temp_client.py` — upload temporário da imagem para S3; gera presigned URL usada pelos clientes de URL
+- [x] `src/search/aggregator.py` — agrega + deduplica resultados das múltiplas fontes; enriquecimento Rekognition
+- [x] `src/search/orchestrator.py` — chama FaceCheck + Google Vision em paralelo (asyncio)
+- [x] `src/search/full_search.py` — orquestra as 4 fontes em paralelo via S3 presigned URL; deduplicação global; Rekognition opcional
+- [x] `tests/test_search.py` — testes unitários passando
 - [ ] Critério de parada: recall < 70% em mais de 2 dos 5 casos → revisar stack
 
 **Estrutura do resultado agregado:**
@@ -130,13 +137,17 @@
 **Entregável:** Interface de curadoria + exportação do dossiê.
 
 **Tarefas:**
-- [x] `src/ui/` — interface de curadoria (Streamlit ou HTMX)
-  - Upload de foto
-  - Lista de resultados com preview + domínio + dados do responsável
-  - Botões: Violação / Não é violação / Investigar
+- [x] `web/` — interface Next.js (substituiu Streamlit); deploy no Vercel
+  - Upload de foto + busca assíncrona com polling
+  - Tela de resumo (Alta / Média / Baixa confiança)
+  - Grade de resultados estática (pré-validação de thumbnails); seção Inconclusivos colapsável
+  - Curadoria: marcar violação por card; selecionar todos; ActionBar com progresso
+  - Tela de análise com dados de lookup (CNPJ, WHOIS, responsáveis)
+  - Exportação do dossiê em PDF
 - [x] `src/export/dossie_generator.py` — gera markdown estruturado com apenas os resultados marcados como violação
 - [x] `src/export/pdf_exporter.py` — converte markdown em PDF
-- [x] `tests/test_export.py` — validar formato do dossiê com Ulysses
+- [x] `tests/test_export.py` — validar formato do dossiê
+- [x] Deploy backend no Railway; deploy frontend no Vercel
 - [ ] Critério de parada: > 40% dos casos exigirem edição estrutural → reprojetar estrutura do dossiê
 
 **Estrutura do dossiê exportado:**
