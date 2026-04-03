@@ -95,7 +95,6 @@ def _render_item(index: int, item: dict, label: str = "Violação") -> str:
 
     whois = _as_dict(lookup.get("whois"))
     cnpj_data = _as_dict(lookup.get("cnpj_data"))
-    jucesp = _as_dict(lookup.get("jucesp"))
     summary = _as_dict(lookup.get("summary"))
 
     page_url = _v(search.get("page_url") or search.get("pageUrl"))
@@ -127,7 +126,6 @@ def _render_item(index: int, item: dict, label: str = "Violação") -> str:
 
     whois_dates = _format_whois_dates(whois)
     registrant = _v(whois.get("registrant"))
-    jucesp_url = _v(jucesp.get("jucesp_search_url"))
     confidence = _format_confidence(search)
 
     thumbnail = search.get("thumbnailUrl") or search.get("preview_thumbnail") or ""
@@ -156,7 +154,6 @@ def _render_item(index: int, item: dict, label: str = "Violação") -> str:
         f"- **E-mail:** {email}\n"
         f"- **WHOIS:** {whois_dates}\n"
         f"- **Registrante WHOIS:** {registrant}\n"
-        f"- **JUCESP:** {jucesp_url}\n"
         f"- **Fonte CNPJ:** {fonte}\n"
         f"- **Confiança da busca:** {confidence}\n"
     )

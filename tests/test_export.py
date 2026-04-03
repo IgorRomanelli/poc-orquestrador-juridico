@@ -35,7 +35,6 @@ def _make_item(
     registrant="Empresa Exemplo Ltda",
     created="2020-01-01",
     expiration_date="2026-01-01",
-    jucesp_url="https://www.jucesponline.sp.gov.br/ResultadoBusca.aspx?chave=exemplo",
 ) -> dict:
     if socios is None:
         socios = [{"nome": "João da Silva", "qualificacao": "Sócio Administrador"}]
@@ -60,9 +59,6 @@ def _make_item(
                 "municipio": municipio,
                 "uf": uf,
                 "socios": socios,
-            },
-            "jucesp": {
-                "jucesp_search_url": jucesp_url,
             },
             "summary": {
                 "razao_social": razao_social,
@@ -100,7 +96,6 @@ class TestDossieGenerator:
             situacao=None,
             logradouro=None,
             registrant=None,
-            jucesp_url=None,
         )
         # Apagar summary também
         item["lookup"]["summary"]["razao_social"] = None
@@ -292,7 +287,6 @@ def _make_full_item(
                 "fonte": fonte,
                 "socios": socios,
             },
-            "jucesp": {"jucesp_search_url": "https://www.jucesponline.sp.gov.br/ResultadoBusca.aspx?chave=exemplo"},
             "summary": {"razao_social": razao_social, "cnpj": cnpj, "registrant": "Empresa Exemplo Ltda"},
         },
     }

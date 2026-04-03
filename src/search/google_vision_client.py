@@ -70,16 +70,16 @@ def _normalize_response(web_detection: dict) -> list[dict]:
         elif partial_matches:
             image_url = partial_matches[0].get("url")
 
-        # Confidence baseada no tipo de correspondência encontrada na página:
-        # fullMatchingImages  → imagem idêntica na página (alta confiança)
-        # partialMatchingImages → correspondência parcial (moderada)
-        confidence = 0.85 if full_matches else 0.65
+        # confidence = None → Rekognition fará a comparação facial real.
+        # source_confidence = estimativa estrutural usada só se Rekognition não estiver disponível.
+        source_confidence = 0.85 if full_matches else 0.65
         results.append({
             "image_url": image_url,
             "page_url": page_url,
             "domain": _extract_domain(page_url),
             "source": "google_vision",
-            "confidence": confidence,
+            "confidence": None,
+            "source_confidence": source_confidence,
             "preview_thumbnail": None,
         })
 
@@ -92,7 +92,8 @@ def _normalize_response(web_detection: dict) -> list[dict]:
             "page_url": image_url,   # sem page_url — usar image_url como referência
             "domain": _extract_domain(image_url),
             "source": "google_vision",
-            "confidence": 0.40,  # visualmente similar, sem correspondência confirmada
+            "confidence": None,
+            "source_confidence": 0.40,  # visualmente similar, sem correspondência confirmada
             "preview_thumbnail": None,
         })
 

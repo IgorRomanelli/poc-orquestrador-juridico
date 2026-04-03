@@ -10,7 +10,7 @@ Fluxo:
          - yandex_client.search_by_image_url (Yandex reverse image via SearchAPI)
          - copyseeker_client.search_by_image_url (busca reversa visual)
     3. S3 cleanup no finally (sempre executado)
-    4. Combina e deduplica por page_url (mantém maior confidence)
+    4. Combina e deduplica por page_url (mantém maior confidence; herda thumbnails do perdedor)
     5. Rekognition enriquece TODOS os resultados sem confidence nativa
        (Vision, Serper, SearchAPI, Yandex) — FaceCheck já traz seu próprio score
 """
@@ -29,21 +29,40 @@ def _confidence_value(item: dict) -> float:
     return c if c is not None else -1.0
 
 
+def _merge_thumbnails(winner: dict, loser: dict) -> dict:
+    """Retorna cópia do vencedor com preview_thumbnail/image_url herdados do perdedor se ausentes."""
+    updates = {}
+    if not winner.get("preview_thumbnail") and loser.get("preview_thumbnail"):
+        updates["preview_thumbnail"] = loser["preview_thumbnail"]
+    if not winner.get("image_url") and loser.get("image_url"):
+        updates["image_url"] = loser["image_url"]
+    return {**winner, **updates} if updates else winner
+
+
 def _deduplicate(items: list[dict]) -> list[dict]:
-    """Deduplica por page_url mantendo o item com maior confidence."""
+    """Deduplica por page_url mantendo o item com maior confidence.
+
+    Quando o vencedor não possui preview_thumbnail ou image_url, herda esses
+    campos do perdedor — evitando que a deduplicação descarte thumbnails válidas
+    de fontes com confidence menor.
+    """
     best: dict[str, dict] = {}
     for item in items:
         url = item.get("page_url", "")
         if not url:
             continue
-        if url not in best or _confidence_value(item) > _confidence_value(best[url]):
+        if url not in best:
             best[url] = item
+        elif _confidence_value(item) > _confidence_value(best[url]):
+            best[url] = _merge_thumbnails(winner=item, loser=best[url])
+        else:
+            best[url] = _merge_thumbnails(winner=best[url], loser=item)
     return list(best.values())
 
 
 async def run_full_search(image_path: str, image_bytes: bytes) -> list[dict]:
     """
-    Executa busca completa nas 4 fontes e retorna resultados deduplicados.
+    Executa busca completa nas 5 fontes e retorna resultados deduplicados.
 
     Args:
         image_path: caminho local da imagem (usado pelo orchestrator).

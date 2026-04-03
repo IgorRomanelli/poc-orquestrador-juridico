@@ -44,9 +44,6 @@ def sample_lookup_result():
             "uf": "SP",
             "socios": [{"nome": "João da Silva", "qualificacao": "Sócio Administrador"}],
         },
-        "jucesp": {
-            "jucesp_search_url": "https://www.jucesponline.sp.gov.br/BuscaEmpresa?nome=Empresa+Exemplo+Ltda",
-        },
         "summary": {
             "razao_social": "Empresa Exemplo Ltda",
             "cnpj": "12.345.678/0001-99",
