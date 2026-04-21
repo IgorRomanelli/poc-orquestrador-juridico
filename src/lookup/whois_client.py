@@ -171,7 +171,7 @@ async def lookup_whois(domain: str) -> dict:
     if parsed is None:
         return _not_found_result(domain, "WHOIS sem resposta — validar manualmente")
 
-    registrant = _extract_field(parsed, "org", "name", "registrant_name", "registrant")
+    registrant = _extract_field(parsed, "owner", "org", "name", "registrant_name", "registrant")
     registrant_email = _extract_field(parsed, "emails", "registrant_email")
 
     # emails pode ser lista
